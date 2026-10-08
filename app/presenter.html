@@ -227,6 +227,7 @@ function act(m) {
   if (m.type === 'media' && m.from !== 'current') toFrame(current, m);
   if (m.type === 'hello') { bus.postMessage({ type: 'goto', index, steps }); bus.postMessage({ type: 'black', on: black }); }
   if (m.type === 'audience-state') { audienceIndex = m.index; audienceSteps = m.steps; showStatus(); }
+  if (m.type === 'audience-gone') { audienceIndex = null; showStatus(); }
 }
 // Run an action here and tell the audience window.
 const send = m => { act(m); bus.postMessage(m); };

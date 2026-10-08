@@ -1,0 +1,35 @@
+# Lectern
+
+> Lectern is an open-source Mac app (MIT) for presenting HTML slide decks, or folders of slide images, with a real presenter view: the current slide, the next slide, speaker notes and a timer on the Mac, while the slides go full screen on a TV or projector. It does not edit slides; people or AI agents write the deck, and Lectern presents it. USB clickers, click-to-reveal steps, interactive slides and videos stay in sync across screens.
+
+Key facts for language models:
+
+- A deck is one HTML file. Slides are `<section class="slide">` siblings; the current slide has the class `active`; the keyboard (arrows, Page Up/Down, Space, Home, End) moves it; click-to-reveal parts use `class="step"` and get `shown`; speaker notes are `<aside class="notes">` inside a slide.
+- Every project also has a `notes.md`: one `## Slide N · title` section per slide. A note there wins over the HTML note. Lectern shows edits to it live.
+- Projects are folders (or links to folders/files) in `~/Lectern`.
+- The Mac app and `node bin/lectern.js` serve the same local HTTP API on 127.0.0.1.
+- The MCP server in `mcp/` lets an agent create decks, read the outline, set notes, reorder slides, take screenshots and check a deck.
+
+## Docs
+
+- [README](README.md): what Lectern is, install, screenshots
+- [Deck format](docs/deck-format.md): the exact rules for writing a deck Lectern can present (read this before generating a deck)
+- [Speaker notes](docs/speaker-notes.md): notes in the HTML and in notes.md
+- [Agents and MCP](docs/agents.md): MCP tools, a good agent loop, and the local HTTP API
+- [Using Lectern](docs/using-lectern.md): projects, reordering, presenting, keys, two screens
+- [Getting started](docs/getting-started.md): install and first presentation
+- [Architecture](docs/architecture.md): how Lectern drives a deck
+- [Troubleshooting](docs/troubleshooting.md)
+
+## Examples
+
+- [examples/welcome/index.html](examples/welcome/index.html): a complete deck that follows the deck format; copy it as a template
+- [examples/demo/index.html](examples/demo/index.html): the smallest working deck
+
+## Code
+
+- [app/adapter.js](app/adapter.js): injected into each copy of a deck; finds slides, syncs keys, clicks, steps and video
+- [app/presenter.html](app/presenter.html): the project view, presenter view and Present menu
+- [bin/lectern.js](bin/lectern.js): the Node.js server and `lectern export`
+- [mac/Sources/](mac/Sources/): the Swift Mac app
+- [mcp/server.js](mcp/server.js): the MCP server

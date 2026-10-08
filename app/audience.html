@@ -50,6 +50,8 @@ addEventListener('message', e => {
   if (m.type === 'click') bus.postMessage({ type: 'click', path: m.path, from: 'audience' });
   if (m.type === 'media') bus.postMessage({ type: 'media', path: m.path, state: m.state, time: m.time, from: 'audience' });
 });
+// Tell the presenter when this window closes, so it stops showing an old position.
+addEventListener('pagehide', () => { if (!inPresenter) bus.postMessage({ type: 'audience-gone' }); });
 
 // Keys pressed while this window (not the deck inside it) has focus.
 if (inPresenter) document.getElementById('hint').hidden = true;
