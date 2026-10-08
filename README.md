@@ -52,6 +52,18 @@ Notes can live in two places:
 
 To have an agent add notes, tell it the deck folder. It reads `notes.md` to see which slide is which and writes the notes under each heading, or it writes `<aside class="notes">` into the HTML. Open presenter windows show the change within a few seconds. If the agent changes the slides, the windows reload and stay on the same slide.
 
+## Mac app
+
+`Lectern.app` is a small native Mac app (about 1 MB, no Electron). It runs on Intel and Apple-chip Macs with macOS 12 or newer, and it needs no Node.js. It shows the same pages as above.
+
+- **One click to present.** Click **Start presenting**. The presenter view goes full screen on the Mac's own screen, and the slides go full screen on the TV or projector. You do not drag any windows. If there is only one screen, the slides open in a normal window.
+- **Do Not Disturb.** Lectern turns it on when you start presenting and off when you close the slides. The first time, Lectern asks to set this up: click **Set Up**, then click **Add Shortcut** two times in the Shortcuts app. (macOS lets apps change Focus only through Shortcuts.) You can do this later from the Lectern menu → Set Up Do Not Disturb.
+- **Add a deck:** File → Add Deck Folder… (⌘O), or drop a folder on the app icon. Lectern links to the folder, so edits that you or an agent make there show up live. Decks are listed in `~/Lectern`.
+
+Build it: `mac/build.sh` makes `dist/Lectern.app` and `dist/Lectern.zip`. The icon comes from `mac/icon/make-icon.swift` (run `mac/icon/make-icns.sh` to make it again).
+
+**Install on another Mac:** send `Lectern.zip`, open it, and drag `Lectern.app` to Applications. The app is not signed with a paid Apple developer account, so macOS stops it the first time. Open it once, click **Done**, then go to System Settings → Privacy & Security, scroll down, and click **Open Anyway**. After that it opens normally.
+
 ## What HTML decks work
 
 Any deck that you move through with the keyboard. Lectern does not change the deck. It sends the same key presses to every copy of the deck. It finds slides with `.reveal .slides > section`, `section.slide`, `.slide`, or `body > section`, and the current slide from the `active`, `present`, or `current` class. Click-to-reveal steps (`.step` / `.shown`, or reveal.js `.fragment`) stay in sync.
