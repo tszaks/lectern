@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lectern</title>
+<style>
+  :root { --bg: #111312; --panel: #1b1e1d; --line: #2a2e2c; --text: #ecebe6; --muted: #8b918e; --accent: #e2a23b; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font: 16px/1.5 -apple-system, system-ui, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 56px 20px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 32px; }
+  #drop { border: 2px dashed var(--line); border-radius: 14px; padding: 36px 20px; text-align: center; color: var(--muted); cursor: pointer; transition: border-color .2s, background .2s; }
+  #drop.over { border-color: var(--accent); background: rgba(226,162,59,.06); color: var(--text); }
+  #drop b { color: var(--text); }
+  #drop small { display: block; margin-top: 6px; font-size: 13px; }
+  ul { list-style: none; padding: 0; margin: 32px 0 0; }
+  li { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 10px; }
+  li .name { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  li .bad { color: var(--muted); font-weight: 400; font-size: 13px; }
+  a.btn { color: inherit; text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 14px; white-space: nowrap; }
+  a.btn:hover { border-color: var(--muted); }
+  a.btn.primary { background: var(--accent); border-color: var(--accent); color: #1a1a1a; font-weight: 600; }
+  .empty { color: var(--muted); text-align: center; margin-top: 32px; }
+  .where { color: var(--muted); font-size: 13px; margin-top: 28px; }
+  code { background: var(--panel); padding: 1px 6px; border-radius: 5px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Lectern</h1>
+  <p class="sub">Present HTML or image slides, with speaker notes.</p>
+  <div id="drop" tabindex="0">
+    <b>Drop a slide folder here</b>, or click to choose one.
+    <small>The folder can hold an HTML deck (with its images and fonts) or slide images such as 01.png, 02.png…</small>
+  </div>
+  <input id="picker" type="file" webkitdirectory hidden>
+  <ul id="decks"></ul>
+  <p class="where" id="where"></p>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const enc = encodeURIComponent;
+
+async function refresh() {
+  const { decks, library } = await fetch('/api/decks').then(r => r.json());
+  const list = $('decks');
+  list.replaceChildren();
+  if (!decks.length) list.insertAdjacentHTML('beforeend', '<p class="empty">No decks yet.</p>');
+  for (const d of decks) {
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = d.name;
+    if (!d.ok) { const bad = document.createElement('span'); bad.className = 'bad'; bad.textContent = ' · no .html file or images'; name.append(bad); }
+    li.append(name);
+    if (d.ok) {
+      li.append(link('Full screen only', '/audience/' + enc(d.name), false), link('Present', '/present/' + enc(d.name), true));
+    }
+    list.append(li);
+  }
+  $('where').textContent = library ? `Decks live in ${library}. Each deck has a notes.md file that you or an agent can edit.` : '';
+}
+function link(text, href, primary) {
+  const a = document.createElement('a');
+  a.className = 'btn' + (primary ? ' primary' : '');
+  a.textContent = text; a.href = href;
+  return a;
+}
+
+// ---------- adding a deck ----------
+// Each file goes up with its path inside the folder, so an HTML deck keeps its images and fonts.
+async function upload(deck, files) {
+  $('drop').textContent = `Adding ${deck}…`;
+  for (const { file, path } of files) {
+    const url = `/api/upload/${enc(deck)}/${path.split('/').map(enc).join('/')}`;
+    const r = await fetch(url, { method: 'PUT', body: file });
+    if (!r.ok) { alert(`Could not add ${path}: ${await r.text()}`); break; }
+  }
+  location.reload();
+}
+const skip = p => p.split('/').some(part => part.startsWith('.'));
+
+$('picker').onchange = () => {
+  const files = [...$('picker').files];
+  if (!files.length) return;
+  const deck = files[0].webkitRelativePath.split('/')[0];
+  upload(deck, files.map(f => ({ file: f, path: f.webkitRelativePath.split('/').slice(1).join('/') })).filter(f => !skip(f.path)));
+};
+$('drop').onclick = () => $('picker').click();
+$('drop').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') $('picker').click(); };
+
+// Read a dropped folder (or loose files) into { file, path } pairs.
+function readEntry(entry, prefix = '') {
+  return new Promise(resolve => {
+    if (entry.isFile) return entry.file(f => resolve([{ file: f, path: prefix + f.name }]), () => resolve([]));
+    const reader = entry.createReader(), all = [];
+    const next = () => reader.readEntries(async batch => {
+      if (!batch.length) return resolve((await Promise.all(all.map(e => readEntry(e, prefix + entry.name + '/')))).flat());
+      all.push(...batch); next();
+    }, () => resolve([]));
+    next();
+  });
+}
+const drop = $('drop');
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = async e => {
+  e.preventDefault(); drop.classList.remove('over');
+  const entries = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (entries.length === 1 && entries[0].isDirectory) {
+    const folder = entries[0];
+    const files = (await readEntry(folder)).map(f => ({ file: f.file, path: f.path.slice(folder.name.length + 1) }));
+    return upload(folder.name, files.filter(f => !skip(f.path)));
+  }
+  // Loose files (for example a set of slide images): ask for a deck name.
+  const files = (await Promise.all(entries.map(en => readEntry(en)))).flat().filter(f => !skip(f.path));
+  if (!files.length) return;
+  const deck = prompt('Name for this deck:', 'My slides');
+  if (deck && !/[\/\\]/.test(deck) && !deck.startsWith('.')) upload(deck.trim(), files);
+};
+
+refresh();
+</script>
+</body>
+</html>

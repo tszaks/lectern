@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lectern · Presenter</title>
+<style>
+  :root { --bg: #111312; --panel: #1b1e1d; --line: #2a2e2c; --text: #ecebe6; --muted: #8b918e; --accent: #e2a23b; --warn: #d45f48; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px/1.4 -apple-system, system-ui, sans-serif; }
+  body { display: grid; grid-template-rows: auto 1fr; height: 100vh; overflow: hidden; }
+  button { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1a1a1a; font-weight: 600; }
+
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
+  #home { color: var(--muted); text-decoration: none; font-size: 18px; }
+  #home:hover { color: var(--text); }
+  #title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+  #timer { font: 600 22px ui-monospace, Menlo, monospace; cursor: pointer; min-width: 90px; text-align: right; }
+  #timer.paused { color: var(--muted); }
+  #clock { color: var(--muted); font-variant-numeric: tabular-nums; }
+  #status { color: var(--muted); font-size: 13px; }
+  #status.warn { color: var(--warn); }
+  #resync { display: none; padding: 2px 8px; font-size: 13px; }
+  #resync.on { display: inline-block; }
+  #blackbadge { display: none; background: var(--warn); color: #fff; border-radius: 6px; padding: 3px 8px; font-size: 12px; font-weight: 700; }
+  body.black #blackbadge { display: inline-block; }
+
+  main { display: grid; grid-template-columns: 1.6fr 1fr; gap: 20px; padding: 20px; min-height: 0; }
+  .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+  .screen { position: relative; aspect-ratio: 16 / 9; width: 100%; background: #000; border-radius: 10px; overflow: hidden; }
+  /* Decks always render at 1920x1080 and are scaled to fit, so every view matches the projector. */
+  .screen iframe { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; border: 0;
+    transform: translate(-50%, -50%) scale(var(--fit, .25)); }
+  #preview { pointer-events: none; }
+  #end { position: absolute; inset: 0; display: none; place-items: center; color: var(--muted); background: #000; }
+  #end.on { display: grid; }
+  .left { display: flex; flex-direction: column; min-height: 0; }
+  #nav { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 14px; }
+  #count { font-variant-numeric: tabular-nums; min-width: 90px; text-align: center; }
+  .right { display: grid; grid-template-rows: auto 1fr; gap: 20px; min-height: 0; }
+  .notes { display: flex; flex-direction: column; min-height: 0; }
+  #notes { flex: 1; width: 100%; resize: none; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px 18px; font: 26px/1.45 -apple-system, system-ui, sans-serif; outline: none; }
+  #notes:focus { border-color: var(--muted); }
+  .size { display: flex; gap: 6px; align-items: center; text-transform: none; letter-spacing: 0; }
+  .size button { padding: 2px 10px; }
+  #saved { font-size: 12px; text-transform: none; letter-spacing: 0; }
+</style>
+</head>
+<body>
+<header>
+  <a id="home" href="/" title="All decks">←</a>
+  <div id="title">Lectern</div>
+  <span id="blackbadge">SCREEN BLANK</span>
+  <span id="status"></span><button id="resync">Fix</button>
+  <button class="primary" id="open">Open audience window</button>
+  <span id="clock"></span>
+  <span id="timer" class="paused" title="Click to start or pause. Double-click to reset.">0:00</span>
+</header>
+<main>
+  <section class="left">
+    <div class="label">Now</div>
+    <div class="screen"><iframe id="current" data-role="current" allow="fullscreen; autoplay"></iframe></div>
+    <div id="nav">
+      <button id="prev" aria-label="Previous">←</button>
+      <span id="count">–</span>
+      <button id="next" aria-label="Next">→</button>
+    </div>
+  </section>
+  <section class="right">
+    <div>
+      <div class="label">Next</div>
+      <div class="screen"><iframe id="preview" data-role="preview" tabindex="-1"></iframe><div id="end">End of deck</div></div>
+    </div>
+    <div class="notes">
+      <div class="label">
+        <span>Notes <span id="saved"></span></span>
+        <span class="size"><button id="smaller" title="Smaller notes (−)">A−</button><button id="bigger" title="Bigger notes (+)">A+</button></span>
+      </div>
+      <textarea id="notes" placeholder="No notes for this slide. Type here, or ask your agent to add them." spellcheck="true"></textarea>
+    </div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const current = $('current'), preview = $('preview'), notesBox = $('notes');
+const deck = decodeURIComponent(location.pathname.split('/')[2] || '');
+const api = what => `/api/${what}/${encodeURIComponent(deck)}`;
+const deckUrl = `/deck/${encodeURIComponent(deck)}/`;
+const bus = new BroadcastChannel('lectern:' + deck);
+const toFrame = (f, m) => f.contentWindow && f.contentWindow.postMessage({ lectern: true, ...m }, location.origin);
+const BLANK_KEYS = ['b', 'B', '.'];
+const NAV_KEYS = ['ArrowRight','ArrowLeft','ArrowUp','ArrowDown','PageDown','PageUp',' ','Enter','Backspace','Home','End'];
+
+let index = 0, steps = 0, count = 0, deckNotes = [], labels = [], title = '', fileNotes = {};
+let black = false, audienceIndex = null, audienceSteps = 0, previewReady = false, restore = null, outlineSent = '';
+
+// ---------- one place where every action happens ----------
+function act(m) {
+  if (m.type === 'key' && BLANK_KEYS.includes(m.key)) { setBlack(!black); return; }
+  if (m.type === 'key') { toFrame(current, m); startTimer(); }
+  if (m.type === 'click' && m.from !== 'current') toFrame(current, m);
+  if (m.type === 'hello') { bus.postMessage({ type: 'goto', index, steps }); bus.postMessage({ type: 'black', on: black }); }
+  if (m.type === 'audience-state') { audienceIndex = m.index; audienceSteps = m.steps; showStatus(); }
+}
+// Run an action here and tell the audience window.
+const send = m => { act(m); bus.postMessage(m); };
+bus.onmessage = e => act(e.data);
+
+function setBlack(on) {
+  black = on;
+  document.body.classList.toggle('black', on);
+  bus.postMessage({ type: 'black', on });
+}
+
+// ---------- messages from the deck copies ----------
+addEventListener('message', e => {
+  const m = e.data;
+  if (!m || !m.lectern) return;
+  if (e.source === current.contentWindow) {
+    if (m.type === 'key') send({ type: 'key', key: m.key });
+    if (m.type === 'click') send({ type: 'click', path: m.path, from: 'current' });
+    if (m.type === 'ready' && restore) { toFrame(current, { type: 'goto', ...restore }); restore = null; return; }
+    if (m.type === 'state') onState(m);
+    // The presenter leads: when it (re)loads, an open audience window follows it.
+    if (m.type === 'ready') bus.postMessage({ type: 'goto', index, steps });
+  } else if (e.source === preview.contentWindow && m.type === 'ready') {
+    previewReady = true; previewIndex = -1; updatePreview();
+  }
+});
+
+function onState(s) {
+  if (restore) return; // the deck is reloading; keep the old position until it is back
+  const moved = s.index !== index || s.count !== count;
+  index = s.index; steps = s.steps; count = s.count; deckNotes = s.notes; labels = s.labels;
+  if (s.title) { title = s.title; $('title').textContent = title; document.title = 'Presenter · ' + title; }
+  $('count').textContent = `${index + 1} / ${count}`;
+  if (moved || document.activeElement !== notesBox) showNotes();
+  if (moved) updatePreview();
+  showStatus();
+  sendOutline();
+}
+
+// Keep notes.md listing every slide with its title, so an agent can see which note goes where.
+function sendOutline() {
+  const key = JSON.stringify(labels);
+  if (key === outlineSent || !labels.length) return;
+  outlineSent = key;
+  fetch(api('notes'), { method: 'PUT', body: JSON.stringify({ outline: labels, title }) });
+}
+
+let previewIndex = -1;
+function updatePreview() {
+  if (!previewReady || previewIndex === index + 1) return;
+  previewIndex = index + 1;
+  $('end').classList.toggle('on', previewIndex >= count);
+  if (previewIndex < count) toFrame(preview, { type: 'goto', index: previewIndex });
+}
+
+function showStatus() {
+  const st = $('status'), off = audienceIndex !== null && (audienceIndex !== index || audienceSteps !== steps);
+  st.className = off ? 'warn' : '';
+  st.textContent = audienceIndex === null ? 'Audience window not open'
+    : off ? `Audience is on slide ${audienceIndex + 1}` + (audienceIndex === index ? ' (different step)' : '') : 'Audience in sync';
+  $('resync').classList.toggle('on', off);
+}
+$('resync').onclick = () => bus.postMessage({ type: 'goto', index, steps });
+
+// ---------- notes ----------
+// A note in notes.md wins. Otherwise show the note written in the deck itself.
+function showNotes() {
+  notesBox.value = fileNotes[index + 1] || deckNotes[index] || '';
+}
+let saveTimer = null;
+notesBox.addEventListener('input', () => {
+  const slide = index + 1, text = notesBox.value;
+  fileNotes[slide] = text;
+  $('saved').textContent = '· saving…';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    fetch(api('notes'), { method: 'PUT', body: JSON.stringify({ slide, text }) })
+      .then(r => { $('saved').textContent = r.ok ? '· saved to notes.md' : '· could not save'; })
+      .catch(() => { $('saved').textContent = '· could not save'; });
+  }, 600);
+});
+const loadNotes = () => fetch(api('notes')).then(r => r.json()).then(d => {
+  fileNotes = d.notes || {};
+  if (document.activeElement !== notesBox) showNotes();
+});
+
+let fontSize = 26;
+try { fontSize = Number(localStorage.getItem('lectern-notes-size')) || 26; } catch {}
+function setFont(px) {
+  fontSize = Math.max(14, Math.min(72, px));
+  notesBox.style.fontSize = fontSize + 'px';
+  try { localStorage.setItem('lectern-notes-size', fontSize); } catch {}
+}
+$('smaller').onclick = () => setFont(fontSize - 2);
+$('bigger').onclick = () => setFont(fontSize + 2);
+setFont(fontSize);
+
+// ---------- live updates when an agent edits the deck or notes.md ----------
+let version = null;
+setInterval(() => {
+  fetch(api('version')).then(r => r.json()).then(v => {
+    if (version && v.slides !== version.slides) reloadDeck();
+    if (version && v.notes !== version.notes && document.activeElement !== notesBox) loadNotes();
+    version = v;
+  }).catch(() => {});
+}, 2000);
+function reloadDeck() {
+  restore = { index, steps };
+  previewReady = false; outlineSent = '';
+  current.src = current.src; preview.src = preview.src;
+  bus.postMessage({ type: 'reload' });
+}
+
+// ---------- timer and clock ----------
+let elapsed = 0, startedAt = null;
+function startTimer() { if (startedAt === null && elapsed === 0) startedAt = Date.now(); }
+$('timer').onclick = () => {
+  if (startedAt === null) startedAt = Date.now();
+  else { elapsed += Date.now() - startedAt; startedAt = null; }
+};
+$('timer').ondblclick = () => { elapsed = 0; startedAt = null; };
+setInterval(() => {
+  const ms = elapsed + (startedAt ? Date.now() - startedAt : 0), s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = String(s % 60).padStart(2, '0');
+  $('timer').textContent = h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+  $('timer').classList.toggle('paused', !startedAt);
+  $('clock').textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}, 250);
+
+// ---------- keys (keyboard and USB clickers) ----------
+addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const typing = document.activeElement === notesBox;
+  if (typing && e.key === 'Escape') { notesBox.blur(); return; }
+  // Clickers send PageDown/PageUp. Those move slides even while you type notes.
+  if (typing && e.key !== 'PageDown' && e.key !== 'PageUp') return;
+  if (e.key === '+' || e.key === '=') return setFont(fontSize + 2);
+  if (e.key === '-' || e.key === '_') return setFont(fontSize - 2);
+  if (NAV_KEYS.includes(e.key) || BLANK_KEYS.includes(e.key)) { e.preventDefault(); send({ type: 'key', key: e.key }); }
+});
+$('next').onclick = () => send({ type: 'key', key: 'ArrowRight' });
+$('prev').onclick = () => send({ type: 'key', key: 'ArrowLeft' });
+$('open').onclick = () => window.open('/audience/' + encodeURIComponent(deck), 'lectern-audience-' + deck, 'popup,width=1280,height=720');
+
+// ---------- scale each 1920x1080 deck view to its box ----------
+const fitObserver = new ResizeObserver(entries => entries.forEach(e => {
+  const r = e.contentRect;
+  e.target.style.setProperty('--fit', Math.min(r.width / 1920, r.height / 1080));
+}));
+document.querySelectorAll('.screen').forEach(el => fitObserver.observe(el));
+
+// ---------- start ----------
+loadNotes().finally(() => { current.src = deckUrl; preview.src = deckUrl; });
+showStatus();
+</script>
+</body>
+</html>

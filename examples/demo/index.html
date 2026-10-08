@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lectern demo</title>
+<style>
+  html, body { margin: 0; height: 100%; font: 48px/1.3 system-ui; }
+  .slide { position: fixed; inset: 0; display: none; place-content: center; text-align: center; padding: 60px; }
+  .slide.active { display: grid; }
+  .slide:nth-child(even) { background: #1e2924; color: #f5f0e6; }
+</style>
+</head>
+<body>
+<section class="slide active">
+  <h1>Lectern demo</h1>
+  <aside class="notes">Notes can live in an aside with class "notes".</aside>
+</section>
+<section class="slide" data-notes="Or in a data-notes attribute on the slide.">
+  <h1>Slide two</h1>
+</section>
+<section class="slide">
+  <h1>Slide three</h1>
+  <aside class="notes">Or type them in the presenter view. They save to index.notes.json.</aside>
+</section>
+<script>
+  const slides = [...document.querySelectorAll('.slide')]; let i = 0;
+  const show = n => { slides[i].classList.remove('active'); i = Math.max(0, Math.min(slides.length - 1, n)); slides[i].classList.add('active'); };
+  addEventListener('keydown', e => {
+    if (['ArrowRight', 'PageDown', ' '].includes(e.key)) show(i + 1);
+    if (['ArrowLeft', 'PageUp'].includes(e.key)) show(i - 1);
+    if (e.key === 'Home') show(0);
+    if (e.key === 'End') show(slides.length - 1);
+  });
+</script>
+</body>
+</html>

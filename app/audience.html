@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lectern · Audience</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  /* The deck always renders at 1920x1080 and is scaled to fit the screen (black bars if the shape differs). */
+  iframe { position: fixed; left: 50%; top: 50%; width: 1920px; height: 1080px; border: 0;
+    transform: translate(-50%, -50%) scale(var(--fit, .5)); }
+  #black { position: fixed; inset: 0; background: #000; display: none; }
+  #black.on { display: block; }
+  #hint { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 10px 18px; border-radius: 999px;
+    background: rgba(0,0,0,.75); color: #fff; font: 500 15px system-ui; transition: opacity .6s; pointer-events: none; }
+</style>
+</head>
+<body>
+<iframe id="deck" data-role="audience" allow="fullscreen; autoplay"></iframe>
+<div id="black"></div>
+<div id="hint">Move this window to the projector, then press F for full screen</div>
+<script>
+const frame = document.getElementById('deck'), black = document.getElementById('black');
+const deck = decodeURIComponent(location.pathname.split('/')[2] || '');
+const bus = new BroadcastChannel('lectern:' + deck);
+const toFrame = m => frame.contentWindow.postMessage({ lectern: true, ...m }, location.origin);
+const BLANK_KEYS = ['b', 'B', '.'];
+
+function act(m) {
+  if (m.type === 'key' && BLANK_KEYS.includes(m.key)) return; // presenter owns blanking
+  if (m.type === 'key' || m.type === 'goto') toFrame(m);
+  if (m.type === 'click' && m.from !== 'audience') toFrame(m);
+  if (m.type === 'black') black.classList.toggle('on', m.on);
+  if (m.type === 'reload') frame.src = frame.src; // the deck file changed
+}
+bus.onmessage = e => act(e.data);
+
+addEventListener('message', e => {
+  const m = e.data;
+  if (e.source !== frame.contentWindow || !m || !m.lectern) return;
+  if (m.type === 'ready') bus.postMessage({ type: 'hello' });
+  if (m.type === 'state') bus.postMessage({ type: 'audience-state', index: m.index, steps: m.steps });
+  if (m.type === 'key') { bus.postMessage({ type: 'key', key: m.key }); act({ type: 'key', key: m.key }); }
+  if (m.type === 'click') bus.postMessage({ type: 'click', path: m.path, from: 'audience' });
+});
+
+// Keys pressed while this window (not the deck inside it) has focus.
+addEventListener('keydown', e => {
+  if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const nav = ['ArrowRight','ArrowLeft','ArrowUp','ArrowDown','PageDown','PageUp',' ','Enter','Backspace','Home','End','b','B','.'];
+  if (nav.includes(e.key)) { e.preventDefault(); bus.postMessage({ type: 'key', key: e.key }); act({ type: 'key', key: e.key }); }
+});
+addEventListener('dblclick', () => document.documentElement.requestFullscreen());
+setTimeout(() => document.getElementById('hint').style.opacity = 0, 5000);
+
+const fit = () => frame.style.setProperty('--fit', Math.min(innerWidth / 1920, innerHeight / 1080));
+addEventListener('resize', fit); fit();
+frame.src = `/deck/${encodeURIComponent(deck)}/`;
+document.title = deck + ' · Audience';
+</script>
+</body>
+</html>

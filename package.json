@@ -1,0 +1,10 @@
+{
+  "name": "lectern",
+  "version": "0.1.0",
+  "description": "Present any HTML slide deck with a presenter view: notes, next-slide preview, timer, and USB clicker support.",
+  "type": "module",
+  "bin": { "lectern": "bin/lectern.js" },
+  "files": ["bin", "app"],
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}
