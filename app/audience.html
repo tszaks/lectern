@@ -50,7 +50,10 @@ addEventListener('message', e => {
 });
 
 // Keys pressed while this window (not the deck inside it) has focus.
+const inPresenter = window.parent !== window; // shown full screen inside the presenter page
+if (inPresenter) document.getElementById('hint').hidden = true;
 addEventListener('keydown', e => {
+  if (e.key === 'Escape' && inPresenter) { parent.postMessage({ lecternExit: true }, location.origin); return; }
   if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); return; }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const nav = ['ArrowRight','ArrowLeft','ArrowUp','ArrowDown','PageDown','PageUp',' ','Enter','Backspace','Home','End','b','B','.'];

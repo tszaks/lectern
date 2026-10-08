@@ -164,6 +164,10 @@
     const t = e.target;
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'Escape' && role === 'audience' && window.parent.parent !== window.parent) {
+      window.parent.parent.postMessage({ lecternExit: true }, location.origin); // leave full screen
+      return;
+    }
     if (e.key === 'f' || e.key === 'F') {
       // Full screen the whole Lectern window (not only this frame), so the deck keeps its 1920x1080 size.
       e.preventDefault(); e.stopImmediatePropagation();

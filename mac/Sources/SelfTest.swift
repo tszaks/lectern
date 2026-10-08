@@ -101,7 +101,7 @@ final class SelfTest {
         after(5) {
             NSApp.activate(ignoringOtherApps: true)
             self.app.mainWindow.makeKeyAndOrderFront(nil)
-            self.js(self.app.mainView, "document.getElementById('slides').click(); 'open'") { _ in }
+            self.js(self.app.mainView, "'strip is always open'") { _ in }
             self.after(4) {
                 self.js(self.app.mainView, thumbs) { v in
                     print("strip before:", v ?? "nil"); fflush(stdout)
@@ -191,7 +191,7 @@ final class SelfTest {
         after(5) {
             self.js(self.app.mainView, Self.presenterState) { self.results["1_loaded"] = $0 }
             // The "Start presenting" button, as a person would click it.
-            self.js(self.app.mainView, "document.getElementById('open').click(); 'clicked'") { _ in }
+            self.js(self.app.mainView, "document.getElementById('open').click(); document.querySelector('#startmenu [data-mode=presenter]').click(); 'clicked'") { _ in }
             self.after(5) {
                 self.results["2_audienceWindowOpened"] = self.app.audienceWindow != nil
                 self.app.focusPresenter()

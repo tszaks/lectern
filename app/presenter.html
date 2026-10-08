@@ -34,6 +34,16 @@
   #open { display: inline-flex; align-items: center; gap: 8px; flex: none; padding: 7px 16px 7px 14px; }
   #open svg { width: 11px; height: 11px; fill: currentColor; }
   @media (max-width: 960px) { #clock, #status { display: none; } }
+  /* Start presenting asks how: presenter view (slides on the TV) or full screen (slides fill this screen). */
+  #startmenu { position: fixed; top: 54px; right: 20px; z-index: 50; width: 320px; padding: 6px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.14); }
+  #startmenu[hidden], #fullview[hidden] { display: none; }
+  #startmenu button { display: block; width: 100%; text-align: left; border: 0; border-radius: 10px; padding: 10px 12px; background: none; }
+  #startmenu button:hover, #startmenu button:focus-visible { background: var(--side); outline: none; }
+  #startmenu b { display: block; font-weight: 600; margin-bottom: 2px; }
+  #startmenu span { display: block; color: var(--muted); font-size: 13px; line-height: 1.35; }
+  #fullview { position: fixed; inset: 0; z-index: 100; background: #000; }
+  #fullview iframe { width: 100%; height: 100%; border: 0; }
   /* SF Pro Rounded, Heavy: the same font Vero and Payday use for balances. */
   #timer { font: 800 24px ui-rounded, 'SF Pro Rounded', -apple-system, system-ui, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -.01em; cursor: pointer; text-align: center; color: var(--accent); }
   #timer.paused { color: var(--muted); }
@@ -114,6 +124,11 @@
     <button class="primary" id="open"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 1.2v9.6c0 .5.5.8.9.5l7.4-4.8c.4-.3.4-.8 0-1L3.4.7c-.4-.3-.9 0-.9.5z"/></svg>Start presenting</button>
   </div>
 </header>
+<div id="startmenu" role="menu" hidden>
+  <button role="menuitem" data-mode="presenter"><b>Presenter view</b><span id="pvnote">Slides on the TV or projector. Your notes and the timer stay on this screen.</span></button>
+  <button role="menuitem" data-mode="full"><b>Full screen</b><span>Slides fill this screen. Press Esc to stop.</span></button>
+</div>
+<div id="fullview" hidden><iframe id="fsframe" title="Slides" allow="fullscreen; autoplay"></iframe></div>
 <main>
   <section class="left">
     <div class="stage">
@@ -342,6 +357,7 @@ setInterval(() => {
 // ---------- keys (keyboard and USB clickers) ----------
 addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'Escape' && !$('fullview').hidden) { leaveFullScreen(); return; }
   const typing = document.activeElement === notesBox;
   if (typing && e.key === 'Escape') { notesBox.blur(); return; }
   // Clickers send PageDown/PageUp. Those move slides even while you type notes.
@@ -371,7 +387,59 @@ async function loadScreens(ask) {
 loadScreens(false);
 
 let askedForScreens = false;
-$('open').onclick = () => {
+const menu = $('startmenu');
+function showMenu(on) {
+  menu.hidden = !on;
+  if (!on) return;
+  // Say what "Presenter view" will do on this computer right now.
+  const known = screenInfo || typeof screen.isExtended === 'boolean';
+  const two = (screenInfo && screenInfo.screens.length > 1) || screen.isExtended === true;
+  $('pvnote').textContent = !known ? 'Slides go to the TV or projector. Your notes and the timer stay on this screen.'
+    : two ? 'Slides go to the TV or projector. Your notes and the timer stay on this screen.'
+    : 'No second screen found, so the slides open in their own window. Plug in a TV to put them there.';
+  menu.querySelector('button').focus();
+}
+$('open').onclick = e => { e.stopPropagation(); showMenu(menu.hidden); };
+addEventListener('click', e => { if (!menu.hidden && !menu.contains(e.target)) showMenu(false); });
+// A click on a slide goes into the slide's own page, not this one; this page then loses focus.
+addEventListener('blur', () => { if (!menu.hidden) showMenu(false); });
+menu.addEventListener('keydown', e => {
+  const items = [...menu.querySelectorAll('button')], i = items.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
+  if (e.key === 'Escape') { showMenu(false); $('open').focus(); }
+  e.stopPropagation(); // arrow keys here pick a menu item, not a slide
+});
+menu.querySelectorAll('button').forEach(b => b.onclick = () => beginPresenting(b.dataset.mode));
+
+// Starting either way also starts the timer from 0:00.
+function beginPresenting(mode) {
+  showMenu(false);
+  elapsed = 0; startedAt = Date.now();
+  if (mode === 'full') enterFullScreen(); else presenterView();
+}
+
+// Full screen: the slides cover this whole screen, above the presenter view, and stay in sync with it.
+function enterFullScreen() {
+  const fv = $('fullview'), f = $('fsframe');
+  f.onload = () => f.contentWindow && f.contentWindow.focus(); // keys and the clicker go to the slides
+  f.src = audienceUrl;
+  fv.hidden = false;
+  const el = document.documentElement;
+  if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+}
+function leaveFullScreen() {
+  const fv = $('fullview');
+  if (fv.hidden) return;
+  fv.hidden = true;
+  $('fsframe').onload = null;
+  $('fsframe').src = 'about:blank';
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  $('open').focus();
+}
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) leaveFullScreen(); });
+addEventListener('message', e => { if (e.source === $('fsframe').contentWindow && e.data && e.data.lecternExit) leaveFullScreen(); });
+
+function presenterView() {
   // A second screen is plugged in but Chrome has not been allowed to see it yet: ask once.
   // Asking uses up this click (Chrome only opens windows straight after a click), so she clicks again.
   if (!screenInfo && screen.isExtended && 'getScreenDetails' in window && !askedForScreens) {

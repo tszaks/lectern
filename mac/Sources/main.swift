@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
                 self.pendingOpen.forEach { self.addDeck($0) }
                 self.pendingOpen = []
                 if let deck = self.env["LECTERN_SELFTEST"] { SelfTest(app: self, deck: deck).run() }
+                if self.env["LECTERN_HITTEST"] != nil { self.reportClickTargets() }
             }
         } catch {
             NSAlert(error: error).runModal()
@@ -57,6 +58,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         c.websiteDataStore = .default()
         c.preferences.javaScriptCanOpenWindowsAutomatically = true
         c.mediaTypesRequiringUserActionForPlayback = []
+        // "Full screen" in Start presenting uses the web page's own full screen.
+        if #available(macOS 12.3, *) { c.preferences.isElementFullscreenEnabled = true }
         // Tell the pages they are inside the Mac app, so they leave room for the window buttons
         // and let an empty part of the top bar move the window.
         c.userContentController.add(self, name: "lecternWindow")
@@ -197,9 +200,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
                 }
             }
         } else {
-            // Only one screen: the slides open in a normal window.
+            // Only one screen: the slides open in a normal window, in front, so you can see it opened.
+            // (Bringing the presenter back to the front here hid it, and "Start presenting" looked broken.)
             aw.setContentSize(NSSize(width: 1280, height: 720))
             aw.center()
+            aw.makeKeyAndOrderFront(nil)
+            return
         }
         focusPresenter()
     }
@@ -222,8 +228,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
               let close = w.standardWindowButton(.closeButton),
               let container = close.superview?.superview else { return }
         let h = Self.barHeight
+        // Only as wide as the three buttons, so it never sits over the page's own controls.
         var f = container.frame
         f.size.height = h
+        f.size.width = 86
+        f.origin.x = 0
         f.origin.y = w.frame.height - h
         container.frame = f
         let kinds: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
@@ -232,6 +241,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
             b.setFrameOrigin(NSPoint(x: 20 + CGFloat(i) * 20, y: (h - b.frame.height) / 2))
         }
     }
+    /// Test aid: says which view would receive a click at points across the top bar (no real clicks).
+    func reportClickTargets() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            guard let w = self.mainWindow, let frame = w.contentView?.superview else { return }
+            let width = w.frame.width, height = w.frame.height
+            for (name, x) in [("window buttons", 30.0), ("title", 200.0), ("timer", width / 2), ("start presenting", width - 90)] {
+                let p = NSPoint(x: x, y: height - 30)
+                var v = frame.hitTest(p), chain: [String] = []
+                while let cur = v { chain.append(String(describing: type(of: cur))); v = cur.superview }
+                let toPage = chain.contains("WKWebView")
+                print("HIT \(name): \(toPage ? "page gets the click" : "BLOCKED by " + (chain.first ?? "nothing"))")
+            }
+            fflush(stdout)
+            NSApp.terminate(nil)
+        }
+    }
+
     func windowDidResize(_ n: Notification) { if let w = n.object as? NSWindow { placeTrafficLights(w) } }
     func windowDidExitFullScreen(_ n: Notification) { if let w = n.object as? NSWindow { placeTrafficLights(w) } }
     func windowDidBecomeKey(_ n: Notification) { if let w = n.object as? NSWindow { placeTrafficLights(w) } }
