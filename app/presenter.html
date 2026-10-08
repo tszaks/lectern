@@ -58,7 +58,7 @@
   <div id="title">Lectern</div>
   <span id="blackbadge">SCREEN BLANK</span>
   <span id="status"></span><button id="resync">Fix</button>
-  <button class="primary" id="open">Open audience window</button>
+  <button class="primary" id="open">Start presenting</button>
   <span id="clock"></span>
   <span id="timer" class="paused" title="Click to start or pause. Double-click to reset.">0:00</span>
 </header>
@@ -264,7 +264,43 @@ addEventListener('keydown', e => {
 });
 $('next').onclick = () => send({ type: 'key', key: 'ArrowRight' });
 $('prev').onclick = () => send({ type: 'key', key: 'ArrowLeft' });
-$('open').onclick = () => window.open(LOCAL ? '/audience/' + encodeURIComponent(deck) : 'audience.html', 'lectern-audience-' + deck, 'popup,width=1280,height=720');
+// ---------- one click: presenter full screen on the Mac, slides on the TV ----------
+// Chrome can see every screen (after the person allows "window management" once). Safari cannot,
+// so there the button opens the slides in a window to drag to the TV.
+const audienceUrl = LOCAL ? '/audience/' + encodeURIComponent(deck) : 'audience.html';
+const audienceName = 'lectern-audience-' + deck;
+let screenInfo = null;
+async function loadScreens(ask) {
+  if (!('getScreenDetails' in window)) return;
+  try {
+    if (!ask) {
+      const p = await navigator.permissions.query({ name: 'window-management' });
+      if (p.state !== 'granted') return;
+    }
+    screenInfo = await window.getScreenDetails();
+  } catch { screenInfo = null; }
+}
+loadScreens(false);
+
+let askedForScreens = false;
+$('open').onclick = () => {
+  // A second screen is plugged in but Chrome has not been allowed to see it yet: ask once.
+  // Asking uses up this click (Chrome only opens windows straight after a click), so she clicks again.
+  if (!screenInfo && screen.isExtended && 'getScreenDetails' in window && !askedForScreens) {
+    askedForScreens = true;
+    $('status').textContent = 'Allow Chrome to use your screens, then click Start presenting again.';
+    loadScreens(true).then(() => { $('status').textContent = 'Ready. Click Start presenting again.'; });
+    return;
+  }
+  const all = screenInfo ? screenInfo.screens : [];
+  const mac = all.find(s => s.isInternal) || (screenInfo && screenInfo.currentScreen);
+  const tv = all.find(s => s !== mac);
+  if (!tv) { window.open(audienceUrl, audienceName, 'popup,width=1280,height=720'); return; }
+  // Full screen here first. Chrome then lets the same click open the slides on the other screen.
+  document.documentElement.requestFullscreen({ screen: mac }).catch(() => {});
+  window.open(audienceUrl, audienceName,
+    `popup,fullscreen,left=${tv.availLeft},top=${tv.availTop},width=${tv.availWidth},height=${tv.availHeight}`);
+};
 
 // ---------- scale each 1920x1080 deck view to its box ----------
 const fitObserver = new ResizeObserver(entries => entries.forEach(e => {
