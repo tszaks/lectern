@@ -18,6 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
 
     func applicationDidFinishLaunching(_ n: Notification) {
         buildMenu()
+        // Remember each mouse press, so a drag on the page's top bar can move the window.
+        NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { e in self.lastMouseDown = e; return e }
         let library = env["LECTERN_HOME"].map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Lectern")
         server = Server(library: library, appDir: Bundle.main.resourceURL!.appendingPathComponent("app"))
@@ -55,6 +57,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         c.websiteDataStore = .default()
         c.preferences.javaScriptCanOpenWindowsAutomatically = true
         c.mediaTypesRequiringUserActionForPlayback = []
+        // Tell the pages they are inside the Mac app, so they leave room for the window buttons
+        // and let an empty part of the top bar move the window.
+        c.userContentController.add(self, name: "lecternWindow")
+        let js = """
+        document.documentElement.classList.add('mac-app');
+        addEventListener('mousedown', e => {
+          if (e.button !== 0 || e.target.closest('button, a, input, textarea, select, iframe, [contenteditable], .no-drag')) return;
+          if (e.clientY > \(Self.barHeight)) return;
+          window.webkit.messageHandlers.lecternWindow.postMessage(e.detail === 2 ? 'zoom' : 'drag');
+        }, true);
+        """
+        c.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         return c
     }
 
@@ -62,6 +76,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         let w = NSWindow(contentRect: NSRect(origin: .zero, size: size),
                          styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         w.title = title
+        // No separate title bar: the page runs to the top, and the window buttons sit in the page's own top bar.
+        w.styleMask.insert(.fullSizeContentView)
+        w.titlebarAppearsTransparent = true
+        w.titleVisibility = .hidden
         w.contentView = view
         w.collectionBehavior = [.fullScreenPrimary]
         w.backgroundColor = NSColor(red: 0.067, green: 0.075, blue: 0.071, alpha: 1)
@@ -112,7 +130,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         recentDecks = [name] + recentDecks.filter { $0 != name }
     }
     func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
-        if message.body as? String == "addDeck" { openDeck(nil) }
+        switch message.body as? String {
+        case "addDeck": openDeck(nil)
+        case "drag", "zoom": windowAction(message.body as! String, from: message.webView)
+        default: break
+        }
     }
     // File > Open Recent is filled in each time it opens.
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -187,6 +209,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         guard let mw = mainWindow else { return }
         mw.makeKeyAndOrderFront(nil)
         mw.makeFirstResponder(mainView)
+    }
+
+    // ---------- window buttons inside the page's top bar ----------
+
+    /// Height of the page's top bar. The red, yellow and green buttons are centred in it.
+    static let barHeight: CGFloat = 60
+
+    /// Moves the window buttons down so they line up with the page's top bar (AppKit puts them at the very top).
+    func placeTrafficLights(_ w: NSWindow) {
+        guard !w.styleMask.contains(.fullScreen),
+              let close = w.standardWindowButton(.closeButton),
+              let container = close.superview?.superview else { return }
+        let h = Self.barHeight
+        var f = container.frame
+        f.size.height = h
+        f.origin.y = w.frame.height - h
+        container.frame = f
+        let kinds: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+        for (i, kind) in kinds.enumerated() {
+            guard let b = w.standardWindowButton(kind) else { continue }
+            b.setFrameOrigin(NSPoint(x: 20 + CGFloat(i) * 20, y: (h - b.frame.height) / 2))
+        }
+    }
+    func windowDidResize(_ n: Notification) { if let w = n.object as? NSWindow { placeTrafficLights(w) } }
+    func windowDidExitFullScreen(_ n: Notification) { if let w = n.object as? NSWindow { placeTrafficLights(w) } }
+    func windowDidBecomeKey(_ n: Notification) { if let w = n.object as? NSWindow { placeTrafficLights(w) } }
+
+    /// The page asks to move the window (a drag on an empty part of its top bar) or to zoom it (a double-click).
+    var lastMouseDown: NSEvent?
+    func windowAction(_ what: String, from view: WKWebView?) {
+        guard let w = view?.window else { return }
+        if what == "zoom" { w.zoom(nil); return }
+        if what == "drag", let e = lastMouseDown, e.window === w, ProcessInfo.processInfo.systemUptime - e.timestamp < 1 {
+            w.performDrag(with: e)
+        }
     }
 
     func windowWillClose(_ n: Notification) {
