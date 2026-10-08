@@ -299,17 +299,37 @@
     // A column of thumbnails down the left, like Keynote. They grow and shrink with the column's width.
     const fitStrip = () => document.documentElement.style.setProperty('--k', Math.max(60, innerWidth - 46) / W);
     fitStrip(); addEventListener('resize', fitStrip);
-    const deckBg = getComputedStyle(document.body).backgroundColor; // thumbnails keep the deck's own background
+    // Thumbnails keep the deck's own background: the colour of the nearest box around the slides that has one
+    // (for example the deck's stage), not the page body, which can be a different colour behind the stage.
+    const clear = c => !c || c === 'transparent' || /rgba\(.*,\s*0\)$/.test(c);
+    let deckBg = '#fff';
+    for (let el = active.parentElement; el; el = el.parentElement) {
+      const c = getComputedStyle(el).backgroundColor;
+      if (!clear(c)) { deckBg = c; break; }
+    }
     const css = document.createElement('style');
     css.textContent = `
       html, body { overflow-y: auto !important; overflow-x: hidden !important; height: auto !important; background: #f7f7f8 !important; margin: 0 !important; }
-      body > :not(#lectern-strip) { display: none !important; }
+      body > :not(#lectern-strip):not(.lectern-ghost) { display: none !important; }
       #lectern-strip { display: flex; flex-direction: column; gap: 12px; padding: 6px 12px 16px 6px; }
       .lectern-thumb { display: flex; align-items: flex-start; gap: 6px; cursor: pointer; user-select: none; -webkit-user-select: none; }
       .lectern-thumb .pic { position: relative; width: calc(${W}px * var(--k)); height: calc(${H}px * var(--k)); overflow: hidden; border-radius: 8px;
         box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.08); outline: 0 solid #f26b1d; outline-offset: 2px; background: ${deckBg}; }
       .lectern-thumb.here .pic { outline-width: 3px; }
-      .lectern-thumb.dragging { opacity: .35; }
+      /* Dragging works like Marpe Practice's appointments: the slide stays in place, faded; a lifted copy
+         follows the pointer; a dashed, tinted outline shows where it will land; the others slide out of the way. */
+      .lectern-thumb.dragging { opacity: .24; }
+      .lectern-slot { display: flex; gap: 6px; }
+      .lectern-slot .num { order: -1; flex: none; width: 22px; }
+      .lectern-slot .box { width: calc(${W}px * var(--k)); height: calc(${H}px * var(--k)); border: 1.5px dashed #f26b1d; border-radius: 8px;
+        background: color-mix(in srgb, #f26b1d 12%, #fff); box-shadow: 0 6px 16px rgba(0,0,0,.10); }
+      .lectern-ghost { position: fixed; z-index: 1000; pointer-events: none; border-radius: 8px; overflow: hidden;
+        width: calc(${W}px * var(--k)); height: calc(${H}px * var(--k)); background: ${deckBg};
+        box-shadow: 0 18px 40px rgba(0,0,0,.28), 0 2px 6px rgba(0,0,0,.12); transform: scale(1.04) rotate(-1deg); transition: transform .15s ease; }
+      .lectern-ghost > * { position: absolute !important; left: 0 !important; top: 0 !important; width: ${W}px !important; height: ${H}px !important;
+        transform: scale(var(--k)) !important; transform-origin: 0 0 !important; opacity: 1 !important; visibility: visible !important; transition: none !important; }
+      .lectern-ghost .in, .lectern-ghost .step, .lectern-ghost .fragment { opacity: 1 !important; transform: none !important; visibility: visible !important; }
+      @media (prefers-reduced-motion: reduce) { .lectern-ghost { transform: none; } }
       .lectern-thumb .pic > * { position: absolute !important; inset: auto !important; left: 0 !important; top: 0 !important;
         width: ${W}px !important; height: ${H}px !important; transform: scale(var(--k)) !important; transform-origin: 0 0 !important;
         opacity: 1 !important; visibility: visible !important; pointer-events: none !important; transition: none !important; }
@@ -332,34 +352,71 @@
 
     // Drag with the pointer; a short press without moving is a click (go to that slide).
     let drag = null;
+    const thumbs = () => [...strip.querySelectorAll('.lectern-thumb')];
+    // Move an element and let everything that shifted glide to its new place ("FLIP" animation).
+    function glide(change) {
+      const items = [...strip.children], before = new Map(items.map(el => [el, el.getBoundingClientRect().top]));
+      change();
+      for (const el of items) {
+        const dy = before.get(el) - el.getBoundingClientRect().top;
+        if (!dy || el === drag?.slot) continue;
+        el.style.transition = 'none'; el.style.transform = `translateY(${dy}px)`;
+        requestAnimationFrame(() => { el.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1)'; el.style.transform = ''; });
+      }
+    }
+    function startDrag(e) {
+      const t = drag.t, pic = t.querySelector('.pic'), r = pic.getBoundingClientRect();
+      drag.moved = true; drag.dx = e.clientX - r.left; drag.dy = e.clientY - r.top;
+      t.classList.add('dragging');
+      const ghost = document.createElement('div'); ghost.className = 'lectern-ghost';
+      ghost.append(pic.firstElementChild.cloneNode(true));
+      document.body.append(ghost); drag.ghost = ghost;
+      const slot = document.createElement('div'); slot.className = 'lectern-slot';
+      slot.innerHTML = '<span class="num"></span><div class="box"></div>';
+      drag.slot = slot;
+      glide(() => t.after(slot));
+    }
+    function moveGhost(e) { drag.ghost.style.left = (e.clientX - drag.dx) + 'px'; drag.ghost.style.top = (e.clientY - drag.dy) + 'px'; }
     strip.addEventListener('pointerdown', e => {
-      const t = e.target.closest('.lectern-thumb'); if (!t) return;
-      drag = { t, y: e.clientY, moved: false };
+      const t = e.target.closest('.lectern-thumb'); if (!t || e.button !== 0) return;
+      drag = { t, x: e.clientX, y: e.clientY, moved: false };
       t.setPointerCapture(e.pointerId);
     });
     strip.addEventListener('pointermove', e => {
       if (!drag) return;
-      if (!drag.moved && Math.abs(e.clientY - drag.y) < 6) return;
-      drag.moved = true; drag.t.classList.add('dragging');
-      // Scroll near the top or bottom edge, then move the thumbnail next to the one under the pointer.
-      if (e.clientY < 40) scrollBy(0, -20); else if (e.clientY > innerHeight - 40) scrollBy(0, 20);
-      const over = [...strip.children].find(c => c !== drag.t && (() => { const r = c.getBoundingClientRect(); return e.clientY > r.top && e.clientY < r.bottom; })());
-      if (over) { const r = over.getBoundingClientRect(); strip.insertBefore(drag.t, e.clientY > r.top + r.height / 2 ? over.nextSibling : over); renumber(); }
+      if (!drag.moved) { if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return; startDrag(e); }
+      moveGhost(e);
+      // Scroll near the top or bottom edge.
+      if (e.clientY < 40) scrollBy(0, -16); else if (e.clientY > innerHeight - 40) scrollBy(0, 16);
+      // The landing outline goes before the first slide whose middle is below the pointer.
+      const others = thumbs().filter(c => c !== drag.t);
+      const next = others.find(c => { const r = c.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+      const already = next ? drag.slot.nextElementSibling === next || (drag.slot.nextElementSibling === drag.t && drag.t.nextElementSibling === next)
+                           : !drag.slot.nextElementSibling || (drag.slot.nextElementSibling === drag.t && !drag.t.nextElementSibling);
+      if (!already) glide(() => next ? strip.insertBefore(drag.slot, next) : strip.append(drag.slot));
     });
-    strip.addEventListener('pointerup', () => {
+    function endDrag(commit) {
       if (!drag) return;
-      const { t, moved } = drag; drag = null; t.classList.remove('dragging');
-      if (moved) post({ type: 'strip-order', order: [...strip.children].map(c => Number(c.dataset.old)) });
-      else post({ type: 'strip-jump', index: Number(t.dataset.old) });
-    });
+      const { t, moved, slot, ghost } = drag;
+      t.classList.remove('dragging');
+      if (moved) {
+        glide(() => { if (commit) slot.replaceWith(t); else slot.remove(); });
+        ghost.remove(); renumber();
+        if (commit) post({ type: 'strip-order', order: thumbs().map(c => Number(c.dataset.old)) });
+      } else if (commit) post({ type: 'strip-jump', index: Number(t.dataset.old) });
+      drag = null;
+    }
+    strip.addEventListener('pointerup', () => endDrag(true));
+    strip.addEventListener('pointercancel', () => endDrag(false));
+    addEventListener('keydown', e => { if (e.key === 'Escape' && drag) endDrag(false); });
   }
   function renumber() {
     const strip = document.getElementById('lectern-strip');
-    if (strip) [...strip.children].forEach((c, i) => { c.querySelector('.num').textContent = i + 1; });
+    if (strip) [...strip.querySelectorAll('.lectern-thumb')].forEach((c, i) => { c.querySelector('.num').textContent = i + 1; });
   }
   function stripHere(index) {
     const strip = document.getElementById('lectern-strip'); if (!strip) return;
-    [...strip.children].forEach(c => c.classList.toggle('here', Number(c.dataset.old) === index));
+    [...strip.querySelectorAll('.lectern-thumb')].forEach(c => c.classList.toggle('here', Number(c.dataset.old) === index));
     const here = strip.querySelector('.here');
     if (here) here.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
