@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0 — 2026-10-08
+
+- **Send a project as one file.** Export a project as a `.lectern` file (slides, images, fonts and notes); double-click it on another Mac to open it in Lectern.
+- **Export** button in the project, **File → Export Project…** (⌘E). **Open…** accepts `.lectern` files too.
+
 ## 0.1.1 — 2026-10-08
 
 - The presenter view notices when the slides window closes (the status goes back to "Audience not open").

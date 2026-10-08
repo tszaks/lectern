@@ -120,6 +120,9 @@
   body:not(.presenting) #resync, body:not(.presenting) #blackbadge, body:not(.presenting) #endbtn,
   body.presenting #open { display: none !important; }
   #endbtn { flex: none; }
+  #exportbtn { display: inline-flex; align-items: center; gap: 7px; flex: none; }
+  #exportbtn[hidden], body.presenting #exportbtn { display: none !important; }
+  #exportbtn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   /* A new, empty project: import slides first. */
   #emptystate { display: none; }
   body.empty-project main { display: none; }
@@ -146,6 +149,7 @@
   <div class="zone zone-right">
     <span id="blackbadge">Screen blank</span>
     <span id="status"></span><button id="resync">Fix</button>
+    <button id="exportbtn" title="Save this project as one .lectern file to send to someone" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>Export</button>
     <button class="primary" id="open"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 1.2v9.6c0 .5.5.8.9.5l7.4-4.8c.4-.3.4-.8 0-1L3.4.7c-.4-.3-.9 0-.9.5z"/></svg>Present</button>
     <button id="endbtn" title="End the presentation (Esc)">End</button>
   </div>
@@ -564,6 +568,10 @@ addEventListener('message', e => {
     $('strip').classList.toggle('changed', !!pendingOrder);
   }
 });
+
+// ---------- Export (Mac app): the whole project as one .lectern file to send ----------
+const macHandler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.lectern;
+if (macHandler && LOCAL) { $('exportbtn').hidden = false; $('exportbtn').onclick = () => macHandler.postMessage('exportProject'); }
 
 // ---------- a new, empty project: import slides ----------
 async function importIntoProject(files) {

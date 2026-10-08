@@ -6,7 +6,7 @@ Key facts for language models:
 
 - A deck is one HTML file. Slides are `<section class="slide">` siblings; the current slide has the class `active`; the keyboard (arrows, Page Up/Down, Space, Home, End) moves it; click-to-reveal parts use `class="step"` and get `shown`; speaker notes are `<aside class="notes">` inside a slide.
 - Every project also has a `notes.md`: one `## Slide N · title` section per slide. A note there wins over the HTML note. Lectern shows edits to it live.
-- Projects are folders (or links to folders/files) in `~/Lectern`.
+- Projects are folders (or links to folders/files) in `~/Lectern`. A `.lectern` file is a zip of one project folder (deck, assets, notes.md); the Mac app opens it on double-click.
 - The Mac app and `node bin/lectern.js` serve the same local HTTP API on 127.0.0.1.
 - The MCP server in `mcp/` lets an agent create decks, read the outline, set notes, reorder slides, take screenshots and check a deck.
 

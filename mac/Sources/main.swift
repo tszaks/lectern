@@ -28,10 +28,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
                 self.base = "http://127.0.0.1:\(port)"
                 print("Lectern is running at \(self.base)/"); fflush(stdout)
                 self.openMainWindow()
-                self.pendingOpen.forEach { self.addDeck($0) }
+                self.pendingOpen.forEach { self.openAny($0) }
                 self.pendingOpen = []
                 if let deck = self.env["LECTERN_SELFTEST"] { SelfTest(app: self, deck: deck).run() }
                 if self.env["LECTERN_HITTEST"] != nil { self.reportClickTargets() }
+                if let deck = self.env["LECTERN_PACKTEST"] { self.packTest(deck) }
             }
         } catch {
             NSAlert(error: error).runModal()
@@ -45,9 +46,115 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { true }
     func applicationWillTerminate(_ n: Notification) { focus.end(wait: true) }
 
-    // A folder dropped on the app icon, or opened with the app.
+    // A .lectern file, a folder or an HTML file: double-clicked, dropped on the app icon, or opened with the app.
     func application(_ sender: NSApplication, open urls: [URL]) {
-        if base.isEmpty { pendingOpen += urls } else { urls.forEach { addDeck($0) } }
+        if base.isEmpty { pendingOpen += urls } else { urls.forEach { openAny($0) } }
+    }
+    func openAny(_ url: URL) {
+        if url.pathExtension.lowercased() == "lectern" { importProject(url) } else { addDeck(url) }
+    }
+
+    // ---------- .lectern files: a whole project in one file, to send to someone ----------
+    // A .lectern file is a zip of the project folder: the deck, its images and fonts, and notes.md.
+
+    static let projectType = UTType(exportedAs: "com.szakacsmedia.lectern.project", conformingTo: .zip)
+
+    /// Unpacks a .lectern file into a new project and opens it.
+    func importProject(_ file: URL) {
+        let fm = FileManager.default
+        let base = file.deletingPathExtension().lastPathComponent
+        var name = base, n = 2
+        while fm.fileExists(atPath: server.library.appendingPathComponent(name).path) { name = "\(base) \(n)"; n += 1 }
+        let dest = server.library.appendingPathComponent(name)
+        do {
+            try fm.createDirectory(at: dest, withIntermediateDirectories: true)
+            try run("/usr/bin/ditto", ["-x", "-k", file.path, dest.path])
+            // A zip made by hand may wrap everything in one folder: unwrap it.
+            let items = try fm.contentsOfDirectory(atPath: dest.path).filter { !$0.hasPrefix(".") && $0 != "__MACOSX" }
+            var isDir: ObjCBool = false
+            if items.count == 1, fm.fileExists(atPath: dest.appendingPathComponent(items[0]).path, isDirectory: &isDir), isDir.boolValue {
+                let inner = dest.appendingPathComponent(items[0])
+                for f in try fm.contentsOfDirectory(atPath: inner.path) { try fm.moveItem(at: inner.appendingPathComponent(f), to: dest.appendingPathComponent(f)) }
+                try fm.removeItem(at: inner)
+            }
+            try? fm.removeItem(at: dest.appendingPathComponent("__MACOSX"))
+        } catch {
+            try? fm.removeItem(at: dest)
+            let a = NSAlert(); a.messageText = "Lectern could not open “\(file.lastPathComponent)”."; a.informativeText = error.localizedDescription; a.runModal()
+            return
+        }
+        mainView.load(URLRequest(url: presentURL(name)))
+        mainWindow.makeKeyAndOrderFront(nil)
+    }
+
+    /// Saves the open project as one .lectern file.
+    @objc func exportProject(_ sender: Any?) {
+        guard let url = mainView.url, url.path.hasPrefix("/present/"),
+              let name = url.path.dropFirst("/present/".count).removingPercentEncoding, !name.isEmpty,
+              let dir = server.deckDir(name) else {
+            let a = NSAlert(); a.messageText = "Open a project first, then choose Export."; a.runModal(); return
+        }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [Self.projectType]
+        panel.nameFieldStringValue = name + ".lectern"
+        panel.directoryURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+        panel.message = "Save the whole project (slides, images and notes) as one file you can send."
+        panel.beginSheetModal(for: mainWindow) { r in
+            guard r == .OK, let out = panel.url else { return }
+            do {
+                try self.writeProject(from: dir, linkedFile: self.server.linkedFile(name), to: out)
+                NSWorkspace.shared.activateFileViewerSelecting([out])
+            } catch {
+                let a = NSAlert(); a.messageText = "Lectern could not export the project."; a.informativeText = error.localizedDescription; a.runModal()
+            }
+        }
+    }
+    func writeProject(from dir: URL, linkedFile: URL?, to out: URL) throws {
+        let fm = FileManager.default
+        let tmp = fm.temporaryDirectory.appendingPathComponent("lectern-export-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: tmp) }
+        try fm.createDirectory(at: tmp, withIntermediateDirectories: true)
+        // Copy the project without hidden files (for example .git) and build folders.
+        try run("/usr/bin/rsync", ["-a", "--exclude", ".*", "--exclude", "node_modules", dir.resolvingSymlinksInPath().path + "/", tmp.path + "/"])
+        // A project that is one linked HTML file: name it index.html, and its notes notes.md, so it opens as a normal project.
+        if let file = linkedFile, file.lastPathComponent != "index.html" {
+            let stem = file.deletingPathExtension().lastPathComponent
+            try? fm.removeItem(at: tmp.appendingPathComponent("index.html"))
+            try fm.moveItem(at: tmp.appendingPathComponent(file.lastPathComponent), to: tmp.appendingPathComponent("index.html"))
+            let notes = tmp.appendingPathComponent(stem + ".notes.md")
+            if fm.fileExists(atPath: notes.path) {
+                try? fm.removeItem(at: tmp.appendingPathComponent("notes.md"))
+                try fm.moveItem(at: notes, to: tmp.appendingPathComponent("notes.md"))
+            }
+        }
+        try? fm.removeItem(at: out)
+        try run("/usr/bin/ditto", ["-c", "-k", "--norsrc", tmp.path, out.path])
+    }
+    /// Test aid: export a project to a .lectern file, open that file as a new project, and report both.
+    func packTest(_ deck: String) {
+        let out = FileManager.default.temporaryDirectory.appendingPathComponent("\(deck).lectern")
+        do {
+            try writeProject(from: server.deckDir(deck)!, linkedFile: server.linkedFile(deck), to: out)
+            let size = (try? out.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            print("PACK exported \(out.lastPathComponent): \(size) bytes")
+            importProject(out)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                print("PACK opened as: \(self.mainView.url?.path.removingPercentEncoding ?? "?")"); fflush(stdout)
+                NSApp.terminate(nil)
+            }
+        } catch { print("PACK failed: \(error.localizedDescription)"); fflush(stdout); NSApp.terminate(nil) }
+    }
+
+    @discardableResult
+    func run(_ tool: String, _ args: [String]) throws -> Int32 {
+        let p = Process(); p.executableURL = URL(fileURLWithPath: tool); p.arguments = args
+        let err = Pipe(); p.standardError = err
+        try p.run(); p.waitUntilExit()
+        if p.terminationStatus != 0 {
+            let msg = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            throw NSError(domain: "Lectern", code: Int(p.terminationStatus), userInfo: [NSLocalizedDescriptionKey: msg.isEmpty ? "\(tool) failed" : msg])
+        }
+        return p.terminationStatus
     }
 
     // ---------- windows ----------
@@ -135,6 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
         switch message.body as? String {
         case "addDeck": openDeck(nil)
+        case "exportProject": exportProject(nil)
         case "drag", "zoom": windowAction(message.body as! String, from: message.webView)
         case "endPresenting":
             // The presenter pressed End or Esc: close the slides and leave full screen.
@@ -309,10 +417,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         let p = NSOpenPanel()
         p.canChooseDirectories = true
         p.canChooseFiles = true
-        p.allowedContentTypes = [.html, .folder]
+        p.allowedContentTypes = [.html, .folder, Self.projectType]
         p.prompt = "Import"
-        p.message = "Choose an HTML file, or a folder with an HTML deck or slide images."
-        if p.runModal() == .OK, let url = p.url { addDeck(url) }
+        p.message = "Choose a Lectern project file, an HTML file, or a folder with an HTML deck or slide images."
+        if p.runModal() == .OK, let url = p.url { openAny(url) }
     }
 
     /// Adds a folder or one HTML file to the library as a link (nothing is copied),
@@ -415,6 +523,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         menu("File", [item("New Project", #selector(newProject(_:)), "n"),
                       item("Import…", #selector(openDeck(_:)), "i"),
                       item("Open…", #selector(openDeck(_:)), "o"),
+                      item("Export Project…", #selector(exportProject(_:)), "e"),
                       recent,
                       item("All Projects", #selector(goHome(_:)), "l", [.command, .shift]),
                       .separator(),

@@ -16,6 +16,16 @@ Lectern reopens the project you had open last time.
 
 **Where projects live.** Projects are folders in `~/Lectern`. A deck opened with **Open…** is a link to your original folder or file, so it stays where it is and Lectern sees every change. Projects you create with **New project** are real folders inside `~/Lectern`.
 
+## Send a project
+
+A `.lectern` file is a whole project in one file: the deck, its images and fonts, and `notes.md`.
+
+- **Export:** open the project and click **Export** (or **File → Export Project…**, ⌘E). Choose where to save it (the Desktop by default).
+- **Send** the file however you like: Messages, email, AirDrop, a USB stick.
+- **Open:** double-click the `.lectern` file. Lectern opens it as a new project in `~/Lectern` and shows it. Opening the same file twice makes a second copy ("Name 2"); nothing is overwritten.
+
+Under the hood a `.lectern` file is a zip of the project folder, so you can also rename one to `.zip` to look inside. Hidden files (such as a `.git` folder) are left out.
+
 ## Inside a project
 
 - **Thumbnails** (left): click to go to a slide. The current slide has an orange outline.

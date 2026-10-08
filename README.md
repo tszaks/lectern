@@ -29,6 +29,7 @@ Lectern is the missing piece. It opens any HTML deck (or a folder of slide image
 - **Interactive slides stay in sync.** Click-to-reveal steps, buttons on a slide, even videos play in every view at the same time (muted for you, with sound for the room).
 - **Organize without editing.** Reorder slides by dragging their thumbnails. Write notes. Lectern never changes what is on your slides.
 - **Built for agents.** Notes are a plain `notes.md` file, decks follow a simple [format](docs/deck-format.md), and an [MCP server](docs/agents.md) lets an AI agent build, check, and fix a deck.
+- **One file to share.** Export a project as a single `.lectern` file; double-click it on another Mac to open it.
 - **Light.** A 1.4 MB native Mac app that uses the Mac's own WebKit. No Electron.
 
 ## Install
@@ -79,6 +80,10 @@ Press **Esc** (or **End**) to go back to the project.
 | Esc | End the presentation |
 
 Lectern can also turn on **Do Not Disturb** while you present (a one-time, two-click setup the first time). See the [user guide](docs/using-lectern.md) for everything else.
+
+## Send a project to someone
+
+Click **Export** in a project (or **File → Export Project…**, ⌘E). Lectern saves the whole project as **one `.lectern` file**: the slides, their images and fonts, and the notes. Text it, email it, or AirDrop it. The other person **double-clicks** it, and it opens in their Lectern, ready to present.
 
 ## Speaker notes
 
