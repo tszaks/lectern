@@ -20,6 +20,7 @@
 <div id="black"></div>
 <div id="hint">Press F (or double-click) for full screen</div>
 <script>
+const inPresenter = window.parent !== window; // shown full screen inside the presenter page
 // On a website, "/presenter" must end in "/" so the relative links below work.
 if (!/^\/(present|audience)\//.test(location.pathname) && !/(\/|\.html)$/.test(location.pathname)) location.replace(location.pathname + '/' + location.search);
 const frame = document.getElementById('deck'), black = document.getElementById('black');
@@ -36,6 +37,7 @@ function act(m) {
   if (m.type === 'media' && m.from !== 'audience') toFrame(m);
   if (m.type === 'black') black.classList.toggle('on', m.on);
   if (m.type === 'reload') frame.src = frame.src; // the deck file changed
+  if (m.type === 'end' && !inPresenter) window.close(); // the presenter ended the show
 }
 bus.onmessage = e => act(e.data);
 
@@ -50,7 +52,6 @@ addEventListener('message', e => {
 });
 
 // Keys pressed while this window (not the deck inside it) has focus.
-const inPresenter = window.parent !== window; // shown full screen inside the presenter page
 if (inPresenter) document.getElementById('hint').hidden = true;
 addEventListener('keydown', e => {
   if (e.key === 'Escape' && inPresenter) { parent.postMessage({ lecternExit: true }, location.origin); return; }

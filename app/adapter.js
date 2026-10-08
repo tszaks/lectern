@@ -293,15 +293,15 @@
     if (!all.length) return;
     const active = all[currentIndex()] || all[0];
     const W = active.offsetWidth || 1600, H = active.offsetHeight || 900;
-    // Thumbnails grow and shrink with the strip's height.
-    const fitStrip = () => document.documentElement.style.setProperty('--k', Math.max(40, innerHeight - 46) / H);
+    // A column of thumbnails down the left, like Keynote. They grow and shrink with the column's width.
+    const fitStrip = () => document.documentElement.style.setProperty('--k', Math.max(60, innerWidth - 46) / W);
     fitStrip(); addEventListener('resize', fitStrip);
     const css = document.createElement('style');
     css.textContent = `
-      html, body { overflow-x: auto !important; overflow-y: hidden !important; height: auto !important; background: #f7f7f8 !important; margin: 0 !important; }
+      html, body { overflow-y: auto !important; overflow-x: hidden !important; height: auto !important; background: #f7f7f8 !important; margin: 0 !important; }
       body > :not(#lectern-strip) { display: none !important; }
-      #lectern-strip { display: flex; gap: 14px; padding: 12px 16px; align-items: flex-start; width: max-content; }
-      .lectern-thumb { flex: none; width: calc(${W}px * var(--k)); cursor: pointer; user-select: none; -webkit-user-select: none; }
+      #lectern-strip { display: flex; flex-direction: column; gap: 12px; padding: 6px 12px 16px 6px; }
+      .lectern-thumb { display: flex; align-items: flex-start; gap: 6px; cursor: pointer; user-select: none; -webkit-user-select: none; }
       .lectern-thumb .pic { position: relative; width: calc(${W}px * var(--k)); height: calc(${H}px * var(--k)); overflow: hidden; border-radius: 8px;
         box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.08); outline: 0 solid #f26b1d; outline-offset: 2px; }
       .lectern-thumb.here .pic { outline-width: 3px; }
@@ -310,7 +310,7 @@
         width: ${W}px !important; height: ${H}px !important; transform: scale(var(--k)) !important; transform-origin: 0 0 !important;
         opacity: 1 !important; visibility: visible !important; pointer-events: none !important; transition: none !important; }
       .lectern-thumb .pic .in, .lectern-thumb .pic .step, .lectern-thumb .pic .fragment { opacity: 1 !important; transform: none !important; visibility: visible !important; }
-      .lectern-thumb .num { font: 500 12px -apple-system, system-ui, sans-serif; color: #8a8a8f; margin-top: 6px; text-align: center; }
+      .lectern-thumb .num { order: -1; flex: none; width: 22px; font: 500 11px -apple-system, system-ui, sans-serif; color: #8a8a8f; text-align: right; padding-top: 2px; }
       .lectern-thumb.here .num { color: #111; font-weight: 600; }`;
     document.head.appendChild(css);
     const strip = document.createElement('div');
@@ -330,17 +330,17 @@
     let drag = null;
     strip.addEventListener('pointerdown', e => {
       const t = e.target.closest('.lectern-thumb'); if (!t) return;
-      drag = { t, x: e.clientX, moved: false };
+      drag = { t, y: e.clientY, moved: false };
       t.setPointerCapture(e.pointerId);
     });
     strip.addEventListener('pointermove', e => {
       if (!drag) return;
-      if (!drag.moved && Math.abs(e.clientX - drag.x) < 6) return;
+      if (!drag.moved && Math.abs(e.clientY - drag.y) < 6) return;
       drag.moved = true; drag.t.classList.add('dragging');
-      // Edge scroll, then move the thumbnail next to the one under the pointer.
-      if (e.clientX < 40) scrollBy(-20, 0); else if (e.clientX > innerWidth - 40) scrollBy(20, 0);
-      const over = [...strip.children].find(c => c !== drag.t && (() => { const r = c.getBoundingClientRect(); return e.clientX > r.left && e.clientX < r.right; })());
-      if (over) { const r = over.getBoundingClientRect(); strip.insertBefore(drag.t, e.clientX > r.left + r.width / 2 ? over.nextSibling : over); renumber(); }
+      // Scroll near the top or bottom edge, then move the thumbnail next to the one under the pointer.
+      if (e.clientY < 40) scrollBy(0, -20); else if (e.clientY > innerHeight - 40) scrollBy(0, 20);
+      const over = [...strip.children].find(c => c !== drag.t && (() => { const r = c.getBoundingClientRect(); return e.clientY > r.top && e.clientY < r.bottom; })());
+      if (over) { const r = over.getBoundingClientRect(); strip.insertBefore(drag.t, e.clientY > r.top + r.height / 2 ? over.nextSibling : over); renumber(); }
     });
     strip.addEventListener('pointerup', () => {
       if (!drag) return;
@@ -357,7 +357,7 @@
     const strip = document.getElementById('lectern-strip'); if (!strip) return;
     [...strip.children].forEach(c => c.classList.toggle('here', Number(c.dataset.old) === index));
     const here = strip.querySelector('.here');
-    if (here) here.scrollIntoView({ inline: 'center', block: 'nearest' });
+    if (here) here.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 
   function start() {

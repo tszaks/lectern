@@ -68,11 +68,26 @@
   body.black #blackbadge { display: inline-block; }
 
   /* Everything scales with the window, in both directions: each slide is the biggest 16:9 box that fits. */
-  main { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: clamp(12px, 2vw, 24px); padding: 8px clamp(12px, 1.5vw, 20px) clamp(12px, 1.5vw, 20px); min-height: 0; overflow: hidden; }
+  /* Two modes. Project (default): slide thumbnails on the left, the slide large, notes underneath.
+     Presenting (after Present > Presenter view): Now, Next, notes and the timer. */
+  main { display: grid; gap: clamp(12px, 2vw, 24px); padding: 8px clamp(12px, 1.5vw, 20px) clamp(12px, 1.5vw, 20px); min-height: 0; overflow: hidden; }
+  body:not(.presenting) main { grid-template-columns: clamp(150px, 15vw, 220px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(110px, 26%);
+    grid-template-areas: "strip now" "strip notes"; }
+  body.presenting main { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); grid-template-rows: minmax(0, .85fr) minmax(0, 1.15fr);
+    grid-template-areas: "now next" "now notes"; }
+  #strip { grid-area: strip; } .nowbox { grid-area: now; } .nextbox { grid-area: next; } .notesbox { grid-area: notes; }
+  /* Hidden boxes stay laid out (off screen, invisible) instead of display:none. A deck inside a
+     display:none box measures itself as 0 wide and draws nothing when it comes back (Next was black). */
+  body:not(.presenting) .nextbox, body.presenting #strip { position: fixed; left: -10000px; top: 0; width: 480px; height: 300px; visibility: hidden; }
   .stage { width: 100%; }
-  .left .stage { width: min(100cqw, calc((100cqh - 96px) * 16 / 9)); }
-  .right .stage { width: min(100cqw, calc(42cqh * 16 / 9)); }
-  @media (max-width: 760px) { main { grid-template-columns: minmax(0, 1fr); } .right .next { display: none; } }
+  .nowbox { container-type: size; display: flex; flex-direction: column; align-items: center; min-height: 0; }
+  .nowbox .stage { width: min(100cqw, calc((100cqh - 62px) * 16 / 9)); }
+  body.presenting .nowbox .stage { width: min(100cqw, calc((100cqh - 96px) * 16 / 9)); }
+  body:not(.presenting) .nowbox .label { display: none; }
+  .nextbox { container-type: size; display: flex; justify-content: center; min-height: 0; }
+  .nextbox .stage { width: min(100cqw, calc((100cqh - 26px) * 16 / 9)); }
+  .notesbox { display: flex; flex-direction: column; min-height: 0; }
+  @media (max-width: 760px) { body.presenting main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "now" "notes"; } body.presenting .nextbox { position: fixed; left: -10000px; width: 480px; height: 300px; visibility: hidden; } }
   .label { color: var(--muted); font-size: 12px; font-weight: 500; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
   .screen { position: relative; aspect-ratio: 16 / 9; width: 100%; background: #000; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
   /* Decks always render at 1920x1080 and are scaled to fit, so every view matches the projector. */
@@ -82,12 +97,8 @@
   #preview { pointer-events: none; }
   #end { position: absolute; inset: 0; display: none; place-items: center; color: var(--muted); background: var(--side); }
   #end.on { display: grid; }
-  .left { container-type: size; display: flex; flex-direction: column; align-items: center; min-height: 0; }
   #nav { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 16px; }
   #count { font-variant-numeric: tabular-nums; min-width: 90px; text-align: center; color: var(--muted); }
-  .right { container-type: size; display: flex; flex-direction: column; gap: clamp(12px, 2vh, 24px); min-height: 0; }
-  .right .next { display: flex; justify-content: center; }
-  .notes { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   #notes { flex: 1; width: 100%; resize: none; background: var(--side); color: var(--text); border: 1px solid transparent; border-radius: 12px;
     padding: 16px 18px; font: 26px/1.45 -apple-system, system-ui, sans-serif; outline: none; }
   #notes:focus { background: var(--panel); border-color: var(--line); box-shadow: var(--shadow); }
@@ -96,19 +107,22 @@
   .size button { padding: 2px 10px; font-size: 13px; }
   #saved { font-size: 12px; }
 
-  /* Slide strip along the bottom, like PowerPoint: click to go to a slide, drag to change the order. */
-  body.strip { grid-template-rows: auto minmax(0, 1fr) auto; }
-  #strip { display: none; border-top: 1px solid var(--line); background: var(--side); }
-  body.strip #strip { display: block; }
-  #strip .bar { display: flex; align-items: center; gap: 10px; padding: 8px 16px 0; color: var(--muted); font-size: 13px; }
+  /* Slide thumbnails down the left, like Keynote: click to go to a slide, drag to change the order. */
+  #strip { display: flex; flex-direction: column; min-height: 0; background: var(--side); border-radius: 12px; overflow: hidden; }
+  #strip .bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px 4px; color: var(--muted); font-size: 12px; font-weight: 500; }
   #strip .bar .grow { flex: 1; }
-  #strip .bar button { padding: 3px 12px; font-size: 13px; }
+  #strip .bar button { padding: 3px 10px; font-size: 12px; }
   #strip .bar .pending { display: none; }
   #strip.changed .bar .pending { display: inline-block; }
-  #stripframe { display: block; width: 100%; height: clamp(110px, 17vh, 180px); border: 0; }
+  #stripframe { display: block; width: 100%; flex: 1; min-height: 0; border: 0; }
+  /* Top bar per mode: Present in the project; timer, audience status and End while presenting. */
+  body:not(.presenting) #timer, body:not(.presenting) #clock, body:not(.presenting) #status,
+  body:not(.presenting) #resync, body:not(.presenting) #blackbadge, body:not(.presenting) #endbtn,
+  body.presenting #open { display: none !important; }
+  #endbtn { flex: none; }
 </style>
 </head>
-<body class="strip">
+<body>
 <header>
   <div class="zone zone-left">
     <a id="home" href="/" title="All decks" aria-label="All decks"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
@@ -121,7 +135,8 @@
   <div class="zone zone-right">
     <span id="blackbadge">Screen blank</span>
     <span id="status"></span><button id="resync">Fix</button>
-    <button class="primary" id="open"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 1.2v9.6c0 .5.5.8.9.5l7.4-4.8c.4-.3.4-.8 0-1L3.4.7c-.4-.3-.9 0-.9.5z"/></svg>Start presenting</button>
+    <button class="primary" id="open"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 1.2v9.6c0 .5.5.8.9.5l7.4-4.8c.4-.3.4-.8 0-1L3.4.7c-.4-.3-.9 0-.9.5z"/></svg>Present</button>
+    <button id="endbtn" title="End the presentation (Esc)">End</button>
   </div>
 </header>
 <div id="startmenu" role="menu" hidden>
@@ -130,7 +145,12 @@
 </div>
 <div id="fullview" hidden><iframe id="fsframe" title="Slides" allow="fullscreen; autoplay"></iframe></div>
 <main>
-  <section class="left">
+  <section id="strip" aria-label="Slides">
+    <div class="bar"><span id="striphint">Slides</span><span class="grow"></span>
+      <button class="pending" id="ordercancel">Cancel</button><button class="primary pending" id="ordersave">Save order</button></div>
+    <iframe id="stripframe" data-role="strip" title="All slides"></iframe>
+  </section>
+  <section class="nowbox">
     <div class="stage">
       <div class="label">Now</div>
       <div class="screen"><iframe id="current" data-role="current" allow="fullscreen; autoplay"></iframe></div>
@@ -141,25 +161,18 @@
       <button id="next" aria-label="Next">→</button>
     </div>
   </section>
-  <section class="right">
-    <div class="next"><div class="stage">
-      <div class="label">Next</div>
-      <div class="screen"><iframe id="preview" data-role="preview" tabindex="-1"></iframe><div id="end">End of deck</div></div>
-    </div></div>
-    <div class="notes">
-      <div class="label">
-        <span>Notes <span id="saved"></span></span>
-        <span class="size"><button id="smaller" title="Smaller notes (−)">A−</button><button id="bigger" title="Bigger notes (+)">A+</button></span>
-      </div>
-      <textarea id="notes" placeholder="No notes for this slide. Type here, or ask your agent to add them." spellcheck="true"></textarea>
+  <section class="nextbox"><div class="stage">
+    <div class="label">Next</div>
+    <div class="screen"><iframe id="preview" data-role="preview" tabindex="-1"></iframe><div id="end">End of deck</div></div>
+  </div></section>
+  <section class="notesbox">
+    <div class="label">
+      <span>Notes <span id="saved"></span></span>
+      <span class="size"><button id="smaller" title="Smaller notes (−)">A−</button><button id="bigger" title="Bigger notes (+)">A+</button></span>
     </div>
+    <textarea id="notes" placeholder="No notes for this slide. Type here, or ask your agent to add them." spellcheck="true"></textarea>
   </section>
 </main>
-<section id="strip" aria-label="Slides">
-  <div class="bar"><span id="striphint">Click a slide to go to it. Drag a slide to change the order.</span><span class="grow"></span>
-    <button class="pending" id="ordercancel">Cancel</button><button class="primary pending" id="ordersave">Save order</button></div>
-  <iframe id="stripframe" data-role="strip" title="All slides"></iframe>
-</section>
 <script>
 // On a website, "/presenter" must end in "/" so the relative links below work.
 if (!/^\/(present|audience)\//.test(location.pathname) && !/(\/|\.html)$/.test(location.pathname)) location.replace(location.pathname + '/' + location.search);
@@ -183,7 +196,7 @@ let black = false, audienceIndex = null, audienceSteps = 0, previewReady = false
 // ---------- one place where every action happens ----------
 function act(m) {
   if (m.type === 'key' && BLANK_KEYS.includes(m.key)) { setBlack(!black); return; }
-  if (m.type === 'key') { toFrame(current, m); startTimer(); }
+  if (m.type === 'key') { toFrame(current, m); if (document.body.classList.contains('presenting')) startTimer(); }
   if (m.type === 'click' && m.from !== 'current') toFrame(current, m);
   if (m.type === 'media' && m.from !== 'current') toFrame(current, m);
   if (m.type === 'hello') { bus.postMessage({ type: 'goto', index, steps }); bus.postMessage({ type: 'black', on: black }); }
@@ -358,6 +371,7 @@ setInterval(() => {
 addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === 'Escape' && !$('fullview').hidden) { leaveFullScreen(); return; }
+  if (e.key === 'Escape' && document.body.classList.contains('presenting') && document.activeElement !== notesBox) { endPresenting(); return; }
   const typing = document.activeElement === notesBox;
   if (typing && e.key === 'Escape') { notesBox.blur(); return; }
   // Clickers send PageDown/PageUp. Those move slides even while you type notes.
@@ -415,8 +429,22 @@ menu.querySelectorAll('button').forEach(b => b.onclick = () => beginPresenting(b
 function beginPresenting(mode) {
   showMenu(false);
   elapsed = 0; startedAt = Date.now();
-  if (mode === 'full') enterFullScreen(); else presenterView();
+  if (mode === 'full') { enterFullScreen(); return; }
+  document.body.classList.add('presenting'); // switch to Now / Next / notes / timer
+  previewIndex = -1; updatePreview();
+  presenterView();
 }
+// End: close the slides window, stop the timer, and go back to the project.
+function endPresenting() {
+  document.body.classList.remove('presenting');
+  bus.postMessage({ type: 'end' });
+  elapsed = 0; startedAt = null;
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  const mac = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.lecternWindow;
+  if (mac) mac.postMessage('endPresenting'); // the Mac app also leaves full screen
+  $('open').focus();
+}
+$('endbtn').onclick = endPresenting;
 
 // Full screen: the slides cover this whole screen, above the presenter view, and stay in sync with it.
 function enterFullScreen() {
@@ -431,6 +459,7 @@ function leaveFullScreen() {
   const fv = $('fullview');
   if (fv.hidden) return;
   fv.hidden = true;
+  elapsed = 0; startedAt = null;
   $('fsframe').onload = null;
   $('fsframe').src = 'about:blank';
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -459,11 +488,19 @@ function presenterView() {
 };
 
 // ---------- scale each 1920x1080 deck view to its box ----------
-const fitObserver = new ResizeObserver(entries => entries.forEach(e => {
-  const r = e.contentRect;
-  e.target.style.setProperty('--fit', Math.min(r.width / 1920, r.height / 1080));
-}));
-document.querySelectorAll('.screen').forEach(el => fitObserver.observe(el));
+// Measure each box and set its scale. Called on window resize and whenever the layout changes
+// (switching between project and presenting changes the box sizes; a resize watcher alone missed that).
+function fitAll() {
+  document.querySelectorAll('.screen').forEach(el => {
+    const r = el.getBoundingClientRect();
+    if (r.width) el.style.setProperty('--fit', Math.min(r.width / 1920, r.height / 1080));
+  });
+}
+const fitSoon = () => requestAnimationFrame(fitAll);
+new ResizeObserver(fitSoon).observe(document.body);
+document.querySelectorAll('.screen').forEach(el => new ResizeObserver(fitSoon).observe(el));
+addEventListener('resize', fitSoon);
+new MutationObserver(fitSoon).observe(document.body, { attributes: true, attributeFilter: ['class'] }); // mode switches
 
 
 // ---------- slide strip ----------
@@ -500,7 +537,6 @@ addEventListener('message', e => {
     $('strip').classList.toggle('changed', !!pendingOrder);
   }
 });
-if (!LOCAL) $('striphint').textContent = 'Click a slide to go to it.'; // a website cannot save a new order
 
 // ---------- start ----------
 // On a website there is no server to add the adapter to the deck, so add it here (same website, so this is allowed).

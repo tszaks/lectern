@@ -136,6 +136,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         switch message.body as? String {
         case "addDeck": openDeck(nil)
         case "drag", "zoom": windowAction(message.body as! String, from: message.webView)
+        case "endPresenting":
+            // The presenter pressed End or Esc: close the slides and leave full screen.
+            audienceWindow?.close()
+            if let mw = mainWindow, mw.styleMask.contains(.fullScreen) { mw.toggleFullScreen(nil) }
+            focus.end()
         default: break
         }
     }
@@ -334,6 +339,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         }
         mainView.load(URLRequest(url: presentURL(name)))
         mainWindow.makeKeyAndOrderFront(nil)
+    }
+
+    // The slides page closed itself (window.close()), for example after End.
+    func webViewDidClose(_ webView: WKWebView) {
+        if webView === audienceView { audienceWindow?.close() }
     }
 
     // ---------- pages asking for files, alerts, and questions ----------
