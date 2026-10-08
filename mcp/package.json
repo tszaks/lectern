@@ -1,0 +1,17 @@
+{
+  "name": "lectern-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP server so AI agents can create, check and screenshot Lectern slide decks",
+  "type": "module",
+  "main": "server.js",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "playwright-core": "^1.64.0",
+    "zod": "^4.6.5"
+  }
+}
