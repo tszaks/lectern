@@ -249,6 +249,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
             audienceWindow?.close()
             if let mw = mainWindow, mw.styleMask.contains(.fullScreen) { mw.toggleFullScreen(nil) }
             focus.end()
+            stayAwake(false)
+        case "presentingStart": stayAwake(true)   // Full screen mode (no slides window)
+        case "presentingEnd": if audienceWindow == nil { stayAwake(false) }
         default: break
         }
     }
@@ -288,9 +291,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         audienceWindow = w
         w.makeKeyAndOrderFront(nil)
         placeWindows()
-        if env["LECTERN_SELFTEST"] == nil {
-            focus.begin(missing: { self.offerFocusSetup() })
-        }
+        stayAwake(true)
+        // Turn on Do Not Disturb only if it was set up beforehand (Lectern menu). Never ask here:
+        // a question at this moment would pop up as the talk starts and freeze the windows until answered.
+        if env["LECTERN_SELFTEST"] == nil { focus.begin(missing: {}) }
         return view // WebKit loads the slides page into it
     }
 
@@ -391,8 +395,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
             audienceWindow = nil
             audienceView = nil
             focus.end()
+            stayAwake(false)
         } else if w === mainWindow {
             NSApp.terminate(nil)
+        }
+    }
+
+    // ---------- keep the Mac awake while presenting ----------
+    // Without this the display can go dark during a long video or discussion (no key is pressed then).
+    var awakeToken: NSObjectProtocol?
+    func stayAwake(_ on: Bool) {
+        if on, awakeToken == nil {
+            awakeToken = ProcessInfo.processInfo.beginActivity(options: [.idleDisplaySleepDisabled, .idleSystemSleepDisabled, .userInitiated], reason: "Presenting slides")
+        } else if !on, let t = awakeToken {
+            ProcessInfo.processInfo.endActivity(t); awakeToken = nil
         }
     }
 

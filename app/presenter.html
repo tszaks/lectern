@@ -457,8 +457,11 @@ menu.addEventListener('keydown', e => {
 menu.querySelectorAll('button').forEach(b => b.onclick = () => beginPresenting(b.dataset.mode));
 
 // Starting either way also starts the timer from 0:00.
+// Tell the Mac app when a show starts and ends, so it keeps the Mac awake in between.
+const macWindow = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.lecternWindow;
 function beginPresenting(mode) {
   showMenu(false);
+  if (macWindow) macWindow.postMessage('presentingStart');
   elapsed = 0; startedAt = Date.now();
   if (mode === 'full') { enterFullScreen(); return; }
   document.body.classList.add('presenting'); // switch to Now / Next / notes / timer
@@ -491,6 +494,7 @@ function leaveFullScreen() {
   if (fv.hidden) return;
   fv.hidden = true;
   elapsed = 0; startedAt = null;
+  if (macWindow) macWindow.postMessage('presentingEnd');
   $('fsframe').onload = null;
   $('fsframe').src = 'about:blank';
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});

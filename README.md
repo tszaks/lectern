@@ -79,7 +79,7 @@ Press **Esc** (or **End**) to go back to the project.
 | + / − | Bigger or smaller notes |
 | Esc | End the presentation |
 
-Lectern can also turn on **Do Not Disturb** while you present (a one-time, two-click setup the first time). See the [user guide](docs/using-lectern.md) for everything else.
+Lectern keeps the Mac awake while you present, and can turn on **Do Not Disturb** (set it up once from the Lectern menu). See the [user guide](docs/using-lectern.md) for everything else.
 
 ## Send a project to someone
 

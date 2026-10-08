@@ -80,6 +80,10 @@ The slides fill this screen. Use the arrow keys or a clicker. Press **Esc** to r
 
 Videos on slides (YouTube players and `<video>`) play on the audience screen with sound and in your Now view muted, in sync: play, pause and jumps in one happen in the other. Other embedded players (for example TED's own player) cannot be controlled, so they play on the audience screen only.
 
+### Staying awake
+
+While you present, Lectern keeps the Mac and its display awake, so the screen does not go dark during a long video or discussion.
+
 ### Do Not Disturb
 
-macOS has no switch apps can use for Focus, so Lectern uses two small Shortcuts. The first time you start presenting, Lectern offers to set them up: click **Set Up**, then **Add Shortcut** twice. After that, Lectern turns Do Not Disturb on when you start presenting and off when you end (only if Lectern turned it on). You can run the setup again from **Lectern → Set Up Do Not Disturb…**.
+macOS has no switch apps can use for Focus, so Lectern uses two small Shortcuts. To set them up, choose **Lectern → Set Up Do Not Disturb…**, then click **Add Shortcut** twice. (Lectern never asks during a show.) After that, Lectern turns Do Not Disturb on when you start presenting and off when you end (only if Lectern turned it on). You can run the setup again from **Lectern → Set Up Do Not Disturb…**.

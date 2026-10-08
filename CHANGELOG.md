@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 — 2026-10-08
+
+- Keeps the Mac and its display awake while presenting (the screen no longer goes dark during a long video or discussion).
+- No question pops up when a show starts. Set up Do Not Disturb any time from **Lectern → Set Up Do Not Disturb…**.
+
 ## 0.2.0 — 2026-10-08
 
 - **Send a project as one file.** Export a project as a `.lectern` file (slides, images, fonts and notes); double-click it on another Mac to open it in Lectern.
