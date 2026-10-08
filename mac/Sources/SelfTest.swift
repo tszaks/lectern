@@ -175,6 +175,87 @@ final class SelfTest {
         }
         after(5) { step(0) }
     }
+    /// Video test: go to the first slide with a YouTube player, click the player with the mouse,
+    /// then check that the video plays on both screens and that the clicker still moves both screens.
+    func runVideo() {
+        let enc = deck.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? deck
+        app.mainView.load(URLRequest(url: URL(string: app.base + "/present/" + enc)!))
+        let where_ = """
+        JSON.stringify((() => {
+          const f = document.getElementById('current'), d = f.contentDocument, s = d.querySelector('section.slide.active');
+          const v = s && s.querySelector('iframe[src*="youtube"], iframe[data-src*="youtube"]');
+          const slides = [...d.querySelectorAll('section.slide')];
+          if (!v) return { index: slides.indexOf(s) + 1, video: false };
+          const t = v.getBoundingClientRect(), fr = f.getBoundingClientRect(), k = fr.width / 1920;
+          return { index: slides.indexOf(s) + 1, video: true, x: fr.left + (t.left + t.width / 2) * k, y: fr.top + (t.top + t.height / 2) * k };
+        })())
+        """
+        let states = "JSON.stringify(document.getElementById(document.getElementById('current') ? 'current' : 'deck').contentWindow.lecternVideoStates())"
+        after(5) {
+            self.js(self.app.mainView, "document.getElementById('open').click(); document.querySelector('#startmenu [data-mode=presenter]').click(); 'clicked'") { _ in }
+            self.after(5) {
+                // One screen here: put the two windows side by side, so neither is hidden (as with a real TV).
+                if let sc = NSScreen.main?.visibleFrame, let aw = self.app.audienceWindow {
+                    self.app.mainWindow.setFrame(NSRect(x: sc.minX, y: sc.minY, width: sc.width / 2, height: sc.height), display: true)
+                    aw.setFrame(NSRect(x: sc.midX, y: sc.minY, width: sc.width / 2, height: sc.width / 2 * 9 / 16), display: true)
+                    aw.orderFront(nil)
+                }
+                self.app.focusPresenter()
+                func seek(_ n: Int) {
+                    self.js(self.app.mainView, where_) { v in
+                        guard let d = v as? [String: Any] else { return self.finishNamed("video") }
+                        if d["video"] as? Bool != true {
+                            if n > 60 { self.results["error"] = "no video slide"; return self.finishNamed("video") }
+                            self.pageDown(); return self.after(0.4) { seek(n + 1) }
+                        }
+                        self.results["1_videoSlide"] = d["index"]
+                        self.after(6) { self.clickVideo(where_, states) }
+                    }
+                }
+                seek(0)
+            }
+        }
+    }
+    func clickVideo(_ where_: String, _ states: String) {
+        js(app.mainView, where_) { v in
+            guard let d = v as? [String: Any], let x = d["x"] as? Double, let y = d["y"] as? Double else { return self.finishNamed("video") }
+            self.mouse(.leftMouseDown, x, y)
+            self.after(0.1) { self.mouse(.leftMouseUp, x, y) }
+            self.after(6) {
+                self.js(self.app.mainView, "JSON.stringify({ top: document.activeElement.id || document.activeElement.tagName, inner: (document.getElementById('current').contentDocument.activeElement || {}).tagName })") { f in self.results["2_focus"] = f }
+                self.js(self.app.mainView, states) { p in
+                    self.results["2_presenterVideoStates"] = p
+                    self.js(self.app.audienceView, states) { a in
+                        self.results["2_audienceVideoStates"] = a
+                        self.snap(self.app.audienceView, "video-audience") {
+                            self.js(self.app.mainView, "window.__k = []; addEventListener('keydown', e => __k.push(e.key + ' ' + (e.target.id || e.target.tagName) + (e.defaultPrevented ? ' prevented' : '')), true); document.getElementById('current').contentWindow.addEventListener('keydown', e => __k.push('deck ' + e.key + ' ' + (e.target.id || e.target.tagName) + ' trusted=' + e.isTrusted), true); 'ok'") { _ in }
+                            self.results["2_firstResponder"] = String(describing: self.app.mainWindow.firstResponder.map { type(of: $0) })
+                            self.results["2_keyWindow"] = NSApp.keyWindow === self.app.mainWindow ? "presenter" : (NSApp.keyWindow === self.app.audienceWindow ? "audience" : "other")
+                            self.pageDown()
+                            self.after(1) { self.js(self.app.mainView, "JSON.stringify(window.__k)") { k in self.results["3_keysSeen"] = k } }
+                            self.after(1.5) {
+                                self.js(self.app.mainView, Self.presenterState) { p in
+                                    self.results["3_presenterSlideAfterClicker"] = ((p as? [String: Any])?["index"] as? Int).map { $0 + 1 }
+                                    self.js(self.app.audienceView, Self.audienceState) { a in
+                                        self.results["3_audienceSlideAfterClicker"] = ((a as? [String: Any])?["index"] as? Int).map { $0 + 1 }
+                                        self.js(self.app.mainView, "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true, cancelable: true })); 'ok'") { _ in }
+                                        self.after(2) {
+                                            self.js(self.app.mainView, "JSON.stringify([window.__k, [...document.getElementById('current').contentDocument.querySelectorAll('section.slide')].findIndex(s => s.classList.contains('active')) + 1])") { k in self.results["5_afterScriptKey"] = k }
+                                            self.js(self.app.audienceView, states) { a in
+                                                self.results["4_audienceVideoStatesAfterLeaving"] = a
+                                                self.finishNamed("video")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     func finishNamed(_ name: String) {
         if let d = try? JSONSerialization.data(withJSONObject: results, options: [.prettyPrinted, .sortedKeys]) {
             try? d.write(to: out.appendingPathComponent(name + ".json"))
@@ -185,6 +266,7 @@ final class SelfTest {
     func run() {
         if ProcessInfo.processInfo.environment["LECTERN_SELFTEST_MODE"] == "resize" { return runResize() }
         if ProcessInfo.processInfo.environment["LECTERN_SELFTEST_MODE"] == "strip" { return runStrip() }
+        if ProcessInfo.processInfo.environment["LECTERN_SELFTEST_MODE"] == "video" { return runVideo() }
         results["screens"] = NSScreen.screens.map { ["builtIn": CGDisplayIsBuiltin($0.displayID) != 0, "frame": NSStringFromRect($0.frame)] }
         let enc = deck.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? deck
         app.mainView.load(URLRequest(url: URL(string: app.base + "/present/" + enc)!))

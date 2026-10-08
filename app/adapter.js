@@ -95,11 +95,13 @@
   // Titles and notes are read once, and again only when slides are added or removed.
   // Every slide change after that sends just the slide number, which keeps things fast.
   let outlineDirty = true;
+  let lastIndex = -1;
   function report(force) {
     if (role === 'strip') return;
     const all = slides();
     const index = currentIndex();
     const state = { type: 'state', index, count: all.length, title: document.title, steps: shownSteps(all[index]) };
+    if (index !== lastIndex) { lastIndex = index; setTimeout(() => stopMediaOutside(all[index]), 0); } // a video stops when you move on
     const key = JSON.stringify(state);
     if (outlineDirty || force) {
       outlineDirty = false;
@@ -193,7 +195,13 @@
     if (e.source !== window.parent || !e.data || !e.data.lectern) return;
     const m = e.data;
     if (m.type === 'key') press(m.key);
-    else if (m.type === 'click') { const el = fromPath(m.path); if (el) el.click(); }
+    else if (m.type === 'click') {
+      const el = fromPath(m.path);
+      if (!el) return;
+      // A link opens once, from the copy that was clicked; the other copies only follow the click.
+      if (el.closest('a[href]')) addEventListener('click', x => x.preventDefault(), { once: true });
+      el.click();
+    }
     else if (m.type === 'goto') goTo(m.index, m.steps);
     else if (m.type === 'report') report(true);
     else if (m.type === 'media') applyMedia(m);
@@ -201,6 +209,16 @@
     reportSoon();
   });
   addEventListener('hashchange', reportSoon);
+
+  // Clicking an embedded player (for example YouTube) moves keyboard focus into it, and keys pressed
+  // there never reach Lectern: the clicker would seek the video instead of changing slides.
+  // So right after such a click, take focus back. The click itself still plays or pauses the video.
+  addEventListener('blur', () => {
+    setTimeout(() => {
+      const el = document.activeElement;
+      if (el && el.tagName === 'IFRAME') post({ type: 'refocus' }); // the outer Lectern page takes focus back
+    }, 0);
+  });
 
   // ---------- video ----------
   // Videos play in every view at the same time: with sound on the audience screen, muted for the presenter.
@@ -211,6 +229,7 @@
   const players = new Map(); // YouTube iframe -> { state, time, quietUntil }
   const yt = (f, func, args = []) => f.contentWindow && f.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), '*');
   const shareMedia = (el, state, time) => post({ type: 'media', path: pathTo(el), state, time });
+  window.lecternVideoStates = () => [...players.values()].map(p => p.state); // for tests: 1 = playing, 2 = paused
 
   function quiet(root) {
     root.querySelectorAll('iframe').forEach(f => {
@@ -267,6 +286,17 @@
       if (role === 'preview' || (mediaQuietUntil.get(el) || 0) > Date.now()) return;
       shareMedia(el, el.paused ? 'pause' : 'play', el.currentTime);
     }, true);
+  }
+
+  // Leaving a slide pauses its videos, so the sound does not go on under the next slides (as in Keynote).
+  function stopMediaOutside(slide) {
+    if (!slide || role === 'preview' || role === 'strip') return;
+    for (const [f, p] of players) {
+      if (!slide.contains(f) && p.state === 1) { p.quietUntil = Date.now() + 2000; yt(f, 'pauseVideo'); }
+    }
+    document.querySelectorAll('video, audio').forEach(m => {
+      if (!slide.contains(m) && !m.paused) { mediaQuietUntil.set(m, Date.now() + 1000); m.pause(); }
+    });
   }
 
   function applyMedia(m) {

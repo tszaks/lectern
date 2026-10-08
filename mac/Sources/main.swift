@@ -44,6 +44,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { true }
+
+    /// A show is running (slides on the TV, or full screen).
+    var showRunning: Bool { audienceWindow != nil || awakeToken != nil }
+
+    /// Quitting or closing the window during a show asks first, so ⌘Q or ⌘W cannot end a talk by accident.
+    func confirmEndShow() -> Bool {
+        guard showRunning, env["LECTERN_SELFTEST"] == nil else { return true }
+        let a = NSAlert()
+        a.messageText = "End the presentation?"
+        a.informativeText = "The slides on the other screen will close."
+        a.addButton(withTitle: "Keep Presenting")
+        a.addButton(withTitle: "End and Quit")
+        return a.runModal() == .alertSecondButtonReturn
+    }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { confirmEndShow() ? .terminateNow : .terminateCancel }
+    func windowShouldClose(_ w: NSWindow) -> Bool { w === mainWindow ? confirmEndShow() : true }
     func applicationWillTerminate(_ n: Notification) { focus.end(wait: true) }
 
     // A .lectern file, a folder or an HTML file: double-clicked, dropped on the app icon, or opened with the app.
@@ -397,6 +413,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
             focus.end()
             stayAwake(false)
         } else if w === mainWindow {
+            audienceWindow?.close() // already confirmed in windowShouldClose; do not ask again on quit
+            stayAwake(false)
             NSApp.terminate(nil)
         }
     }
@@ -554,9 +572,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         NSApp.mainMenu = bar
     }
 
-    @objc func newProject(_ s: Any?) { mainView.load(URLRequest(url: URL(string: base + "/?new=1")!)); mainWindow.makeKeyAndOrderFront(nil) }
-    @objc func goHome(_ s: Any?) { mainView.load(URLRequest(url: URL(string: base + "/")!)) }
-    @objc func reload(_ s: Any?) { (NSApp.keyWindow?.contentView as? WKWebView)?.reload() }
+    @objc func newProject(_ s: Any?) {
+        if showRunning { NSSound.beep(); return } // leaving the page during a show would freeze the TV
+        mainView.load(URLRequest(url: URL(string: base + "/?new=1")!)); mainWindow.makeKeyAndOrderFront(nil)
+    }
+    @objc func goHome(_ s: Any?) {
+        if showRunning { NSSound.beep(); return } // leaving the page during a show would freeze the TV
+        mainView.load(URLRequest(url: URL(string: base + "/")!))
+    }
+    @objc func reload(_ s: Any?) {
+        if showRunning { NSSound.beep(); return } // a reload during a show would send the TV back to slide 1
+        (NSApp.keyWindow?.contentView as? WKWebView)?.reload()
+    }
 }
 
 extension NSScreen {

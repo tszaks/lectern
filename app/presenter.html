@@ -27,7 +27,9 @@
   .zone-right { justify-content: flex-end; }
   #home { display: grid; place-items: center; width: 28px; height: 28px; margin-left: -6px; border-radius: 8px; color: var(--muted); flex: none; }
   #home:hover { color: var(--text); background: var(--side); }
-  #home[hidden] { display: none; }
+  #home[hidden], body.presenting #home { display: none; } /* no way off the page by accident during a show */
+  #toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 1000; background: rgba(17,17,17,.88); color: #fff; font: 600 14px/1 -apple-system, system-ui, sans-serif; padding: 11px 16px; border-radius: 999px; pointer-events: none; opacity: 0; transition: opacity .2s; }
+  #toast.on { opacity: 1; }
   #home svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   #title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .zone-center { position: relative; } /* the timer is centred; the clock hangs to its right */
@@ -401,9 +403,9 @@ setInterval(() => {
 // ---------- keys (keyboard and USB clickers) ----------
 addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
-  if (e.key === 'Escape' && !$('fullview').hidden) { leaveFullScreen(); return; }
-  if (e.key === 'Escape' && document.body.classList.contains('presenting') && document.activeElement !== notesBox) { endPresenting(); return; }
-  const typing = document.activeElement === notesBox;
+  if (e.key === 'Escape' && !$('fullview').hidden) { confirmEnd(leaveFullScreen); return; }
+  if (e.key === 'Escape' && document.body.classList.contains('presenting')) { confirmEnd(endPresenting); return; }
+  const typing = document.activeElement === notesBox && !notesBox.readOnly;
   if (typing && e.key === 'Escape') { notesBox.blur(); return; }
   // Clickers send PageDown/PageUp. Those move slides even while you type notes.
   if (typing && e.key !== 'PageDown' && e.key !== 'PageUp') return;
@@ -465,12 +467,14 @@ function beginPresenting(mode) {
   elapsed = 0; startedAt = Date.now();
   if (mode === 'full') { enterFullScreen(); return; }
   document.body.classList.add('presenting'); // switch to Now / Next / notes / timer
+  notesBox.readOnly = true; // during the show, a click in the notes must not turn clicker keys into typing
   previewIndex = -1; updatePreview();
   presenterView();
 }
 // End: close the slides window, stop the timer, and go back to the project.
 function endPresenting() {
   document.body.classList.remove('presenting');
+  notesBox.readOnly = false;
   bus.postMessage({ type: 'end' });
   elapsed = 0; startedAt = null;
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -501,7 +505,17 @@ function leaveFullScreen() {
   $('open').focus();
 }
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) leaveFullScreen(); });
-addEventListener('message', e => { if (e.source === $('fsframe').contentWindow && e.data && e.data.lecternExit) leaveFullScreen(); });
+addEventListener('message', e => { if (e.source === $('fsframe').contentWindow && e.data && e.data.lecternExit) confirmEnd(leaveFullScreen); });
+
+// Esc ends a show only when pressed twice, so a stray key or a clicker's "slideshow" button
+// (many send F5, then Esc on the next press) cannot end the talk by accident.
+let escAt = 0, toastTimer = null;
+const toast = document.createElement('div'); toast.id = 'toast'; document.body.append(toast);
+function showToast(text) { toast.textContent = text; toast.classList.add('on'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('on'), 2500); }
+function confirmEnd(end) {
+  if (Date.now() - escAt < 2500) { escAt = 0; toast.classList.remove('on'); end(); return; }
+  escAt = Date.now(); showToast('Press Esc again to end the show');
+}
 
 function presenterView() {
   // A second screen is plugged in but Chrome has not been allowed to see it yet: ask once.
@@ -639,6 +653,26 @@ addAdapter(current); addAdapter(preview); addAdapter(strip);
     loadNotes().finally(() => { current.src = deckUrl; preview.src = deckUrl; strip.src = deckUrl; });
   });
 showStatus();
+
+// After a click on an embedded player inside a slide (for example YouTube), keyboard focus would stay in that
+// player and the clicker would stop changing slides. The slide asks for focus back; this invisible spot takes it.
+const keySink = document.createElement('span');
+keySink.tabIndex = -1; keySink.setAttribute('aria-hidden', 'true');
+keySink.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;';
+document.body.append(keySink);
+addEventListener('message', e => { if (e.data && e.data.lectern && e.data.type === 'refocus') keySink.focus({ preventScroll: true }); });
+// A click on an embedded player (YouTube) moves keyboard focus into that player's own frame, and a
+// clicker's keys then go to the player, not the slides. Take focus back as soon as that happens.
+function trappedInPlayer() {
+  const a = document.activeElement;
+  if (!a || a.tagName !== 'IFRAME') return false;
+  try { const inner = a.contentDocument && a.contentDocument.activeElement; return !!inner && inner.tagName === 'IFRAME'; }
+  catch { return true; } // a frame we cannot read is not one of ours
+}
+const freeFocus = () => { if (trappedInPlayer()) keySink.focus({ preventScroll: true }); };
+addEventListener('blur', () => setTimeout(freeFocus, 0));
+setInterval(freeFocus, 400);
+
 </script>
 </body>
 </html>

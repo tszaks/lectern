@@ -76,6 +76,26 @@ frame.addEventListener('load', () => {
 });
 frame.src = LOCAL ? `/deck/${encodeURIComponent(deck)}/` : new URL('../', location.href).pathname;
 document.title = 'Audience';
+
+// After a click on an embedded player inside a slide (for example YouTube), keyboard focus would stay in that
+// player and the clicker would stop changing slides. The slide asks for focus back; this invisible spot takes it.
+const keySink = document.createElement('span');
+keySink.tabIndex = -1; keySink.setAttribute('aria-hidden', 'true');
+keySink.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;';
+document.body.append(keySink);
+addEventListener('message', e => { if (e.data && e.data.lectern && e.data.type === 'refocus') keySink.focus({ preventScroll: true }); });
+// A click on an embedded player (YouTube) moves keyboard focus into that player's own frame, and a
+// clicker's keys then go to the player, not the slides. Take focus back as soon as that happens.
+function trappedInPlayer() {
+  const a = document.activeElement;
+  if (!a || a.tagName !== 'IFRAME') return false;
+  try { const inner = a.contentDocument && a.contentDocument.activeElement; return !!inner && inner.tagName === 'IFRAME'; }
+  catch { return true; } // a frame we cannot read is not one of ours
+}
+const freeFocus = () => { if (trappedInPlayer()) keySink.focus({ preventScroll: true }); };
+addEventListener('blur', () => setTimeout(freeFocus, 0));
+setInterval(freeFocus, 400);
+
 </script>
 </body>
 </html>
