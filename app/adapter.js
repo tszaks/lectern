@@ -53,7 +53,8 @@
   function notesFor(slide) {
     if (slide.dataset.notes) return slide.dataset.notes;
     const aside = slide.querySelector('aside.notes, .notes');
-    return aside ? aside.innerText.trim() || aside.textContent.trim() : '';
+    // Keep paragraph breaks, drop the indentation that comes from the HTML source.
+    return aside ? aside.textContent.split('\n').map(l => l.trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim() : '';
   }
   // A short label for each slide, so people and agents can tell which notes go where.
   function labelFor(slide) {
