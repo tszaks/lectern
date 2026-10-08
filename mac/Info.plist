@@ -19,7 +19,7 @@
   <array><dict>
     <key>CFBundleTypeName</key><string>Folder</string>
     <key>CFBundleTypeRole</key><string>Viewer</string>
-    <key>LSItemContentTypes</key><array><string>public.folder</string></array>
+    <key>LSItemContentTypes</key><array><string>public.folder</string><string>public.html</string></array>
   </dict></array>
 </dict>
 </plist>

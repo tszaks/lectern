@@ -307,7 +307,7 @@ function reorderDeck(deck, order) {
   }
 }
 function deckVersion(deck) {
-  const dir = deckDir(deck);
+  const dir = deckDir(deck), own = notesPath(deck);
   let slides = 0, notes = 0;
   const walk = (d, depth) => {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
@@ -315,7 +315,9 @@ function deckVersion(deck) {
       const f = path.join(d, e.name);
       if (e.isDirectory()) { if (depth < 2) walk(f, depth + 1); continue; }
       const t = fs.statSync(f).mtimeMs;
-      if (f === notesPath(deck)) notes = Math.max(notes, t); else slides = Math.max(slides, t);
+      if (f === own) notes = Math.max(notes, t);
+      else if (e.name === 'notes.md' || e.name.endsWith('.notes.md')) continue; // another deck's notes
+      else slides = Math.max(slides, t);
     }
   };
   walk(dir, 0);

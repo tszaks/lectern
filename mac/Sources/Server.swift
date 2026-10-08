@@ -150,8 +150,18 @@ final class Server {
     func safeName(_ n: String) -> Bool {
         !n.isEmpty && !n.contains("/") && !n.contains("\\") && !n.hasPrefix(".")
     }
+    /// A library entry is a folder, or a link to one HTML file (an imported file).
+    func linkedFile(_ name: String) -> URL? {
+        guard safeName(name) else { return nil }
+        let real = library.appendingPathComponent(name).resolvingSymlinksInPath()
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: real.path, isDirectory: &isDir), !isDir.boolValue,
+              ["html", "htm"].contains(real.pathExtension.lowercased()) else { return nil }
+        return real
+    }
     func deckDir(_ name: String) -> URL? {
         guard safeName(name) else { return nil }
+        if let file = linkedFile(name) { return file.deletingLastPathComponent() }
         let dir = library.appendingPathComponent(name)
         var isDir: ObjCBool = false
         return FileManager.default.fileExists(atPath: dir.path, isDirectory: &isDir) && isDir.boolValue ? dir : nil
@@ -162,6 +172,7 @@ final class Server {
         return items.map { $0.lastPathComponent }.filter { deckDir($0) != nil }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
     func deckEntry(_ name: String) -> Entry? {
+        if let file = linkedFile(name) { return .html(file.lastPathComponent) }
         guard let dir = deckDir(name) else { return nil }
         let files = ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
             .filter { !$0.hasPrefix(".") }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
@@ -218,7 +229,11 @@ final class Server {
     private let headingRE = try! NSRegularExpression(pattern: "^## Slide (\\d+)\\b.*$", options: [.anchorsMatchLines])
     private let labelPrefixRE = try! NSRegularExpression(pattern: "^## Slide \\d+\\s*·?\\s*")
 
-    func notesPath(_ deck: String) -> URL { deckDir(deck)!.appendingPathComponent("notes.md") }
+    /// A folder deck keeps notes in notes.md. An imported HTML file keeps them in <file name>.notes.md beside it.
+    func notesPath(_ deck: String) -> URL {
+        if let file = linkedFile(deck) { return file.deletingPathExtension().appendingPathExtension("notes.md") }
+        return deckDir(deck)!.appendingPathComponent("notes.md")
+    }
 
     func readNotes(_ deck: String) -> ([String: String], [String: String]) {
         guard let text = try? String(contentsOf: notesPath(deck), encoding: .utf8) else { return ([:], [:]) }
@@ -326,7 +341,7 @@ final class Server {
 
     /// Changes when someone (or an agent) edits the deck or its notes, so open windows can refresh.
     func deckVersion(_ deck: String) -> [String: Double] {
-        let dir = deckDir(deck)!
+        let dir = deckDir(deck)!, own = notesPath(deck).standardizedFileURL.path
         var slides = 0.0, notes = 0.0
         func walk(_ d: URL, _ depth: Int) {
             let items = (try? FileManager.default.contentsOfDirectory(at: d, includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey])) ?? []
@@ -336,7 +351,9 @@ final class Server {
                 let rv = try? f.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
                 if rv?.isDirectory == true { if depth < 2 { walk(f, depth + 1) }; continue }
                 let t = (rv?.contentModificationDate?.timeIntervalSince1970 ?? 0) * 1000
-                if name == "notes.md" && d.standardizedFileURL == dir.standardizedFileURL { notes = max(notes, t) } else { slides = max(slides, t) }
+                if f.standardizedFileURL.path == own { notes = max(notes, t) }
+                else if name == "notes.md" || name.hasSuffix(".notes.md") { continue } // another deck's notes
+                else { slides = max(slides, t) }
             }
         }
         walk(dir, 0)

@@ -3,8 +3,9 @@
 // screen and the slides full screen on the TV or projector. No dragging windows.
 import AppKit
 import WebKit
+import UniformTypeIdentifiers
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate, WKScriptMessageHandler, NSMenuDelegate {
     var server: Server!
     var base = ""
     var mainWindow: NSWindow!
@@ -73,12 +74,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     }
 
     func openMainWindow() {
-        mainView = WKWebView(frame: .zero, configuration: makeConfig())
+        let config = makeConfig()
+        // The home page can ask the app to add a folder (as a link, so nothing is copied).
+        config.userContentController.add(self, name: "lectern")
+        mainView = WKWebView(frame: .zero, configuration: config)
         mainWindow = makeWindow(mainView, title: "Lectern", size: NSSize(width: 1280, height: 800))
         mainWindow.setFrameAutosaveName("LecternMain")
         if mainWindow.frame.origin == .zero { mainWindow.center() }
         mainWindow.makeKeyAndOrderFront(nil)
-        mainView.load(URLRequest(url: URL(string: base + "/")!))
+        // Open the deck that was open last time, if it is still in the library.
+        if env["LECTERN_SELFTEST"] == nil, let last = UserDefaults.standard.string(forKey: "lastDeck"), deckExists(last) {
+            mainView.load(URLRequest(url: presentURL(last)))
+        } else {
+            mainView.load(URLRequest(url: URL(string: base + "/")!))
+        }
+    }
+
+    // ---------- remembering decks ----------
+
+    func deckExists(_ name: String) -> Bool {
+        FileManager.default.fileExists(atPath: server.library.appendingPathComponent(name).path)
+    }
+    func presentURL(_ name: String) -> URL {
+        let enc = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? name
+        return URL(string: base + "/present/" + enc)!
+    }
+    var recentDecks: [String] {
+        get { UserDefaults.standard.stringArray(forKey: "recentDecks") ?? [] }
+        set { UserDefaults.standard.set(Array(newValue.prefix(8)), forKey: "recentDecks") }
+    }
+    /// Each time a deck opens in the presenter, remember it (last opened, and the recent list).
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard webView === mainView, let url = webView.url, url.path.hasPrefix("/present/") else { return }
+        let name = url.path.dropFirst("/present/".count).removingPercentEncoding ?? ""
+        guard !name.isEmpty else { return }
+        UserDefaults.standard.set(name, forKey: "lastDeck")
+        recentDecks = [name] + recentDecks.filter { $0 != name }
+    }
+    func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.body as? String == "addDeck" { openDeck(nil) }
+    }
+    // File > Open Recent is filled in each time it opens.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let names = recentDecks.filter(deckExists)
+        if names.isEmpty { menu.addItem(NSMenuItem(title: "No recent decks", action: nil, keyEquivalent: "")) }
+        for name in names {
+            let i = NSMenuItem(title: name, action: #selector(openRecent(_:)), keyEquivalent: "")
+            i.representedObject = name
+            menu.addItem(i)
+        }
+    }
+    @objc func openRecent(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        mainView.load(URLRequest(url: presentURL(name)))
+        mainWindow.makeKeyAndOrderFront(nil)
     }
 
     // The presenter page asks for the slides window (its "Start presenting" button).
@@ -170,17 +220,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     @objc func openDeck(_ sender: Any?) {
         let p = NSOpenPanel()
         p.canChooseDirectories = true
-        p.canChooseFiles = false
-        p.prompt = "Add Deck"
-        p.message = "Choose a folder with an HTML deck or slide images."
+        p.canChooseFiles = true
+        p.allowedContentTypes = [.html, .folder]
+        p.prompt = "Import"
+        p.message = "Choose an HTML file, or a folder with an HTML deck or slide images."
         if p.runModal() == .OK, let url = p.url { addDeck(url) }
     }
 
-    /// Adds a folder to the library as a link, so edits to the original folder show up live.
+    /// Adds a folder or one HTML file to the library as a link (nothing is copied),
+    /// so edits to the original show up live, and it stays in the list next time.
     func addDeck(_ folder: URL) {
         let fm = FileManager.default
         let lib = server.library.standardizedFileURL, folder = folder.standardizedFileURL
-        var name = folder.lastPathComponent
+        let isFile = ["html", "htm"].contains(folder.pathExtension.lowercased())
+        var name = isFile ? folder.deletingPathExtension().lastPathComponent : folder.lastPathComponent
         if folder.deletingLastPathComponent().path != lib.path {
             // Reuse a link that already points to this folder, or make one with a free name.
             var n = 1
@@ -193,11 +246,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
                     break
                 }
                 n += 1
-                name = "\(folder.lastPathComponent) \(n)"
+                name = "\(isFile ? folder.deletingPathExtension().lastPathComponent : folder.lastPathComponent) \(n)"
             }
         }
-        let enc = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? name
-        mainView.load(URLRequest(url: URL(string: base + "/present/" + enc)!))
+        mainView.load(URLRequest(url: presentURL(name)))
         mainWindow.makeKeyAndOrderFront(nil)
     }
 
@@ -264,7 +316,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
                          .separator(),
                          item("Hide Lectern", #selector(NSApplication.hide(_:)), "h"),
                          item("Quit Lectern", #selector(NSApplication.terminate(_:)), "q")])
-        menu("File", [item("Add Deck Folder…", #selector(openDeck(_:)), "o"),
+        let recent = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+        let recentMenu = NSMenu(title: "Open Recent"); recentMenu.delegate = self
+        recent.submenu = recentMenu
+        menu("File", [item("Import…", #selector(openDeck(_:)), "i"),
+                      item("Open…", #selector(openDeck(_:)), "o"),
+                      recent,
                       item("All Decks", #selector(goHome(_:)), "l", [.command, .shift]),
                       .separator(),
                       item("Close Window", #selector(NSWindow.performClose(_:)), "w")])

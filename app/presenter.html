@@ -26,8 +26,16 @@
   header > * { flex-shrink: 0; }
   header > #title { flex-shrink: 1; }
   @media (max-width: 960px) { #clock, #status { display: none; } }
-  #timer { font: 600 22px -apple-system, system-ui, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -.01em; cursor: pointer; min-width: 90px; text-align: right; color: var(--accent); }
+  /* SF Pro Rounded, Heavy: the same font Vero and Payday use for balances. */
+  #timer { font: 800 24px ui-rounded, 'SF Pro Rounded', -apple-system, system-ui, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -.01em; cursor: pointer; min-width: 90px; text-align: right; color: var(--accent); }
   #timer.paused { color: var(--muted); }
+  /* Rolling digits, like Apple's number animation in Vero and Payday: a changed digit slides up and out,
+     and the new one rolls in from below. */
+  #timer .slot { display: inline-block; position: relative; overflow: hidden; vertical-align: top; height: 1.25em; line-height: 1.25em; }
+  #timer .d { display: inline-block; transition: transform .42s cubic-bezier(.2, .9, .25, 1), opacity .3s ease, filter .3s ease; }
+  #timer .d.enter { transform: translateY(70%); opacity: 0; filter: blur(2px); }
+  #timer .d.leave { position: absolute; left: 0; top: 0; transform: translateY(-70%); opacity: 0; filter: blur(2px); }
+  @media (prefers-reduced-motion: reduce) { #timer .d { transition: none; } }
   #clock { color: var(--muted); font-variant-numeric: tabular-nums; }
   #status { color: var(--muted); font-size: 13px; }
   #status.warn { color: var(--accent); }
@@ -280,6 +288,26 @@ function reloadDeck() {
 // ---------- timer and clock ----------
 let elapsed = 0, startedAt = null;
 function startTimer() { if (startedAt === null && elapsed === 0) startedAt = Date.now(); }
+// Show the time with rolling digits. Only digits that changed move.
+function setTimer(text) {
+  const el = $('timer');
+  if (el.dataset.text === text) return;
+  const old = el.dataset.text || '';
+  el.dataset.text = text;
+  if (old.length !== text.length) { // a new layout (for example 9:59 -> 10:00): build it fresh
+    el.replaceChildren(...[...text].map(ch => { const slot = document.createElement('span'); slot.className = 'slot'; const d = document.createElement('span'); d.className = 'd'; d.textContent = ch; slot.append(d); return slot; }));
+    return;
+  }
+  [...text].forEach((ch, i) => {
+    if (ch === old[i]) return;
+    const slot = el.children[i], prev = slot.querySelector('.d:not(.leave)');
+    const d = document.createElement('span'); d.className = 'd enter'; d.textContent = ch;
+    slot.append(d);
+    if (prev) { prev.classList.add('leave'); setTimeout(() => prev.remove(), 450); }
+    requestAnimationFrame(() => requestAnimationFrame(() => d.classList.remove('enter')));
+  });
+}
+setTimer('0:00');
 $('timer').onclick = () => {
   if (startedAt === null) startedAt = Date.now();
   else { elapsed += Date.now() - startedAt; startedAt = null; }
@@ -288,7 +316,7 @@ $('timer').ondblclick = () => { elapsed = 0; startedAt = null; };
 setInterval(() => {
   const ms = elapsed + (startedAt ? Date.now() - startedAt : 0), s = Math.floor(ms / 1000);
   const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = String(s % 60).padStart(2, '0');
-  $('timer').textContent = h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+  setTimer(h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`);
   $('timer').classList.toggle('paused', !startedAt);
   $('clock').textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }, 250);
