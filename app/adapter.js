@@ -292,10 +292,14 @@
     const all = slides();
     if (!all.length) return;
     const active = all[currentIndex()] || all[0];
-    const W = active.offsetWidth || 1600, H = active.offsetHeight || 900;
+    let W = active.offsetWidth, H = active.offsetHeight;
+    // A slide that simply fills its window (image decks, many simple decks) would take this narrow
+    // strip's shape. Size those as a standard 1920x1080 slide instead.
+    if (!W || !H || (Math.abs(W - innerWidth) < 3 && Math.abs(H - innerHeight) < 3)) { W = 1920; H = 1080; }
     // A column of thumbnails down the left, like Keynote. They grow and shrink with the column's width.
     const fitStrip = () => document.documentElement.style.setProperty('--k', Math.max(60, innerWidth - 46) / W);
     fitStrip(); addEventListener('resize', fitStrip);
+    const deckBg = getComputedStyle(document.body).backgroundColor; // thumbnails keep the deck's own background
     const css = document.createElement('style');
     css.textContent = `
       html, body { overflow-y: auto !important; overflow-x: hidden !important; height: auto !important; background: #f7f7f8 !important; margin: 0 !important; }
@@ -303,7 +307,7 @@
       #lectern-strip { display: flex; flex-direction: column; gap: 12px; padding: 6px 12px 16px 6px; }
       .lectern-thumb { display: flex; align-items: flex-start; gap: 6px; cursor: pointer; user-select: none; -webkit-user-select: none; }
       .lectern-thumb .pic { position: relative; width: calc(${W}px * var(--k)); height: calc(${H}px * var(--k)); overflow: hidden; border-radius: 8px;
-        box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.08); outline: 0 solid #f26b1d; outline-offset: 2px; }
+        box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.08); outline: 0 solid #f26b1d; outline-offset: 2px; background: ${deckBg}; }
       .lectern-thumb.here .pic { outline-width: 3px; }
       .lectern-thumb.dragging { opacity: .35; }
       .lectern-thumb .pic > * { position: absolute !important; inset: auto !important; left: 0 !important; top: 0 !important;

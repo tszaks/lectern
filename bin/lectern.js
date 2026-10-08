@@ -73,6 +73,16 @@ function listDecks() {
   // deckDir follows links, so linked folders and imported files count too.
   return fs.readdirSync(LIBRARY).filter(n => !n.startsWith('.') && deckDir(n)).sort(naturally);
 }
+// For the project list: the kind of project, and when it last changed (newest first).
+function deckSummary(name) {
+  const entry = deckEntry(name), dir = deckDir(name);
+  let modified = 0;
+  try {
+    modified = fs.statSync(dir).mtimeMs;
+    if (entry && entry.html) modified = Math.max(modified, fs.statSync(path.join(dir, entry.html)).mtimeMs);
+  } catch {}
+  return { name, ok: !!entry, kind: !entry ? 'empty' : entry.images ? 'images' : 'html', slides: entry && entry.images ? entry.images.length : null, modified };
+}
 // What to show for a deck: its HTML page, or a page we build from its images.
 function deckEntry(name) {
   const dir = deckDir(name);
@@ -199,7 +209,15 @@ const server = http.createServer(async (req, res) => {
 
     if (first === 'api') {
       const [, what, deck] = parts;
-      if (what === 'decks') return json(res, { library: direct.size ? null : LIBRARY, decks: listDecks().map(n => ({ name: n, ok: !!deckEntry(n) })) });
+      if (what === 'decks') return json(res, { library: direct.size ? null : LIBRARY, decks: listDecks().map(deckSummary).sort((a, b) => b.modified - a.modified) });
+      if (what === 'new' && req.method === 'POST' && !direct.size) {
+        // POST /api/new/<name>: make an empty project folder.
+        if (!safeName(deck) || !deck.trim()) return send(res, 400, 'Please use a name without slashes.');
+        const dir = path.join(LIBRARY, deck.trim());
+        if (fs.existsSync(dir)) return send(res, 409, 'A project with that name already exists.');
+        fs.mkdirSync(dir);
+        return json(res, { ok: true, name: deck.trim() });
+      }
       if (what === 'upload' && req.method === 'PUT' && !direct.size) {
         // PUT /api/upload/<deck>/<relative path> with the file as the body
         if (!safeName(deck)) return send(res, 400, 'Bad deck name');

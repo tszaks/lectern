@@ -72,8 +72,31 @@ final class Server {
         if first == "api" {
             let what = name, deck = parts.count > 2 ? parts[2] : ""
             if what == "decks" {
-                let list = listDecks().map { ["name": $0, "ok": deckEntry($0) != nil] as [String: Any] }
+                // For the project list: kind of project and when it last changed (newest first).
+                let list = listDecks().map { n -> [String: Any] in
+                    let entry = deckEntry(n), dir = deckDir(n)
+                    var modified = 0.0
+                    if let dir = dir, let d = try? dir.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate { modified = d.timeIntervalSince1970 * 1000 }
+                    var kind = "empty"; var slides: Any = NSNull()
+                    switch entry {
+                    case .html(let f)?:
+                        kind = "html"
+                        if let dir = dir, let d = try? dir.appendingPathComponent(f).resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate { modified = max(modified, d.timeIntervalSince1970 * 1000) }
+                    case .images(let imgs)?: kind = "images"; slides = imgs.count
+                    case nil: break
+                    }
+                    return ["name": n, "ok": entry != nil, "kind": kind, "slides": slides, "modified": modified]
+                }.sorted { ($0["modified"] as! Double) > ($1["modified"] as! Double) }
                 return .json(["library": library.path, "decks": list])
+            }
+            if what == "new" && req.method == "POST" {
+                // POST /api/new/<name>: make an empty project folder.
+                let n = deck.trimmingCharacters(in: .whitespaces)
+                guard safeName(n) else { return .text(400, "Please use a name without slashes.") }
+                let dir = library.appendingPathComponent(n)
+                if FileManager.default.fileExists(atPath: dir.path) { return .text(409, "A project with that name already exists.") }
+                do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: false) } catch { return .text(500, error.localizedDescription) }
+                return .json(["ok": true, "name": n])
             }
             if what == "upload" && req.method == "PUT" {
                 // PUT /api/upload/<deck>/<path inside the deck> with the file as the body

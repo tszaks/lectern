@@ -412,10 +412,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         let recent = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
         let recentMenu = NSMenu(title: "Open Recent"); recentMenu.delegate = self
         recent.submenu = recentMenu
-        menu("File", [item("Import…", #selector(openDeck(_:)), "i"),
+        menu("File", [item("New Project", #selector(newProject(_:)), "n"),
+                      item("Import…", #selector(openDeck(_:)), "i"),
                       item("Open…", #selector(openDeck(_:)), "o"),
                       recent,
-                      item("All Decks", #selector(goHome(_:)), "l", [.command, .shift]),
+                      item("All Projects", #selector(goHome(_:)), "l", [.command, .shift]),
                       .separator(),
                       item("Close Window", #selector(NSWindow.performClose(_:)), "w")])
         menu("Edit", [item("Undo", Selector(("undo:")), "z"), item("Redo", Selector(("redo:")), "z", [.command, .shift]),
@@ -428,6 +429,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         NSApp.mainMenu = bar
     }
 
+    @objc func newProject(_ s: Any?) { mainView.load(URLRequest(url: URL(string: base + "/?new=1")!)); mainWindow.makeKeyAndOrderFront(nil) }
     @objc func goHome(_ s: Any?) { mainView.load(URLRequest(url: URL(string: base + "/")!)) }
     @objc func reload(_ s: Any?) { (NSApp.keyWindow?.contentView as? WKWebView)?.reload() }
 }

@@ -120,6 +120,17 @@
   body:not(.presenting) #resync, body:not(.presenting) #blackbadge, body:not(.presenting) #endbtn,
   body.presenting #open { display: none !important; }
   #endbtn { flex: none; }
+  /* A new, empty project: import slides first. */
+  #emptystate { display: none; }
+  body.empty-project main { display: none; }
+  body.empty-project #emptystate { display: grid; place-items: center; min-height: 0; padding: 24px; }
+  #emptystate .box { width: min(560px, 100%); text-align: center; padding: 44px 32px; border: 2px dashed var(--line); border-radius: 18px; transition: border-color .2s, background .2s; }
+  body.over #emptystate .box { border-color: var(--accent); background: rgba(242,107,29,.04); }
+  #emptystate h2 { margin: 0 0 6px; font-size: 22px; letter-spacing: -.01em; }
+  #emptystate p { margin: 0 0 22px; color: var(--muted); }
+  #emptystate .choices { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  #emptystate small { display: block; margin-top: 18px; color: var(--muted); font-size: 12px; }
+  body.empty-project #open { opacity: .35; pointer-events: none; }
 </style>
 </head>
 <body>
@@ -144,6 +155,21 @@
   <button role="menuitem" data-mode="full"><b>Full screen</b><span>Slides fill this screen. Press Esc to stop.</span></button>
 </div>
 <div id="fullview" hidden><iframe id="fsframe" title="Slides" allow="fullscreen; autoplay"></iframe></div>
+<section id="emptystate">
+  <div class="box">
+    <h2>This project is empty</h2>
+    <p>Import the slides to present. You can also drag files onto this window.</p>
+    <div class="choices">
+      <button class="primary" id="impfolder">Import a deck folder…</button>
+      <button id="impfile">Import an HTML file…</button>
+      <button id="impimages">Import slide images…</button>
+    </div>
+    <small id="impbusy">For an HTML deck, choose its whole folder so its images and fonts come along.</small>
+  </div>
+  <input id="pickfolder" type="file" webkitdirectory hidden>
+  <input id="pickfile" type="file" accept=".html,.htm" hidden>
+  <input id="pickimages" type="file" accept="image/*" multiple hidden>
+</section>
 <main>
   <section id="strip" aria-label="Slides">
     <div class="bar"><span id="striphint">Slides</span><span class="grow"></span>
@@ -538,6 +564,48 @@ addEventListener('message', e => {
   }
 });
 
+// ---------- a new, empty project: import slides ----------
+async function importIntoProject(files) {
+  files = files.filter(f => f.path && !f.path.split('/').some(part => part.startsWith('.')));
+  if (!files.length) return;
+  $('impbusy').textContent = `Importing ${files.length} file${files.length === 1 ? '' : 's'}…`;
+  for (const { file, path } of files) {
+    const r = await fetch(`/api/upload/${encodeURIComponent(deck)}/${path.split('/').map(encodeURIComponent).join('/')}`, { method: 'PUT', body: file });
+    if (!r.ok) { alert(`Could not import ${path}: ${await r.text()}`); return; }
+  }
+  location.reload();
+}
+const asFiles = (list, folder) => [...list].map(f => ({ file: f, path: folder ? f.webkitRelativePath.split('/').slice(1).join('/') : f.name }));
+$('impfolder').onclick = () => $('pickfolder').click();
+$('impfile').onclick = () => $('pickfile').click();
+$('impimages').onclick = () => $('pickimages').click();
+$('pickfolder').onchange = e => importIntoProject(asFiles(e.target.files, true));
+$('pickfile').onchange = e => importIntoProject(asFiles(e.target.files, false));
+$('pickimages').onchange = e => importIntoProject(asFiles(e.target.files, false));
+function readEntry(entry, prefix = '') {
+  return new Promise(resolve => {
+    if (entry.isFile) return entry.file(f => resolve([{ file: f, path: prefix + f.name }]), () => resolve([]));
+    const reader = entry.createReader(), all = [];
+    const next = () => reader.readEntries(async batch => {
+      if (!batch.length) return resolve((await Promise.all(all.map(e => readEntry(e, prefix + entry.name + '/')))).flat());
+      all.push(...batch); next();
+    }, () => resolve([]));
+    next();
+  });
+}
+addEventListener('dragover', e => { if (document.body.classList.contains('empty-project')) { e.preventDefault(); document.body.classList.add('over'); } });
+addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('over'); });
+addEventListener('drop', async e => {
+  if (!document.body.classList.contains('empty-project')) return;
+  e.preventDefault(); document.body.classList.remove('over');
+  const entries = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (entries.length === 1 && entries[0].isDirectory) { // a folder: its contents go into the project
+    const folder = entries[0];
+    return importIntoProject((await readEntry(folder)).map(f => ({ file: f.file, path: f.path.slice(folder.name.length + 1) })));
+  }
+  importIntoProject((await Promise.all(entries.map(en => readEntry(en)))).flat());
+});
+
 // ---------- start ----------
 // On a website there is no server to add the adapter to the deck, so add it here (same website, so this is allowed).
 function addAdapter(frame) {
@@ -550,7 +618,13 @@ function addAdapter(frame) {
   });
 }
 addAdapter(current); addAdapter(preview); addAdapter(strip);
-loadNotes().finally(() => { current.src = deckUrl; preview.src = deckUrl; strip.src = deckUrl; });
+// An empty project shows the import screen instead of the slides.
+(LOCAL ? fetch('/api/decks').then(r => r.json()).then(d => (d.decks.find(x => x.name === deck) || {}).ok !== false) : Promise.resolve(true))
+  .catch(() => true)
+  .then(hasSlides => {
+    if (!hasSlides) { document.body.classList.add('empty-project'); $('title').textContent = deck; document.title = deck; return; }
+    loadNotes().finally(() => { current.src = deckUrl; preview.src = deckUrl; strip.src = deckUrl; });
+  });
 showStatus();
 </script>
 </body>
