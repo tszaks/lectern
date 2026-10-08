@@ -1,7 +1,7 @@
 // Draws the Lectern app icon (1024 x 1024 PNG).
 // Run: xcrun swift mac/icon/make-icon.swift <output.png>
-// Design: macOS rounded-square tile in dark ink, a paper slide on top, and one amber
-// "notes" bar below it (the single accent). Depth comes from soft shadows, not borders.
+// Design: macOS rounded-square tile in near-black, a white slide on top, and one orange
+// "notes" bar below it (the single accent, #F26B1D). Depth comes from soft shadows, not borders.
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -37,9 +37,9 @@ let tileRect = rect(100, 100, 824, 824)
 let tile = rounded(tileRect, 186)
 ctx.saveGState()
 ctx.setShadow(offset: CGSize(width: 0, height: -12), blur: 28, color: color(0x000000, 0.35))
-ctx.addPath(tile); ctx.setFillColor(color(0x1E2924)); ctx.fillPath()
+ctx.addPath(tile); ctx.setFillColor(color(0x1C1C1E)); ctx.fillPath()
 ctx.restoreGState()
-fillGradient(tile, 0x2C3B34, 0x151D19, tileRect)
+fillGradient(tile, 0x2C2C2E, 0x111112, tileRect)
 // A faint light along the top edge gives the tile some volume.
 ctx.saveGState()
 ctx.addPath(tile); ctx.clip()
@@ -47,26 +47,26 @@ let sheen = CGGradient(colorsSpace: space, colors: [color(0xFFFFFF, 0.10), color
 ctx.drawLinearGradient(sheen, start: CGPoint(x: 512, y: tileRect.maxY), end: CGPoint(x: 512, y: tileRect.maxY - 260), options: [])
 ctx.restoreGState()
 
-// 2. The slide: a paper card in 16:9, lifted by a shadow.
+// 2. The slide: a white card in 16:9, lifted by a shadow.
 let slideRect = rect(212, 236, 600, 338)
 let slide = rounded(slideRect, 30)
 ctx.saveGState()
 ctx.setShadow(offset: CGSize(width: 0, height: -14), blur: 34, color: color(0x000000, 0.45))
-ctx.addPath(slide); ctx.setFillColor(color(0xF5F0E6)); ctx.fillPath()
+ctx.addPath(slide); ctx.setFillColor(color(0xFFFFFF)); ctx.fillPath()
 ctx.restoreGState()
-fillGradient(slide, 0xFBF8F2, 0xEDE5D6, slideRect)
+fillGradient(slide, 0xFFFFFF, 0xE9E9EC, slideRect)
 // A big title line on the slide, in soft ink (drops out at small sizes, on purpose).
-ctx.addPath(rounded(rect(272, 330, 300, 40), 20)); ctx.setFillColor(color(0x1E2924, 0.22)); ctx.fillPath()
-ctx.addPath(rounded(rect(272, 398, 210, 40), 20)); ctx.setFillColor(color(0x1E2924, 0.12)); ctx.fillPath()
+ctx.addPath(rounded(rect(272, 330, 300, 40), 20)); ctx.setFillColor(color(0x1C1C1E, 0.22)); ctx.fillPath()
+ctx.addPath(rounded(rect(272, 398, 210, 40), 20)); ctx.setFillColor(color(0x1C1C1E, 0.12)); ctx.fillPath()
 
-// 3. The notes: one amber bar (the accent) and one quiet bar.
+// 3. The notes: one orange bar (the accent) and one quiet bar.
 let noteRect = rect(282, 652, 460, 56)
 ctx.saveGState()
 ctx.setShadow(offset: CGSize(width: 0, height: -6), blur: 16, color: color(0x000000, 0.35))
-ctx.addPath(rounded(noteRect, 28)); ctx.setFillColor(color(0xE2A23B)); ctx.fillPath()
+ctx.addPath(rounded(noteRect, 28)); ctx.setFillColor(color(0xF26B1D)); ctx.fillPath()
 ctx.restoreGState()
-fillGradient(rounded(noteRect, 28), 0xEDB24E, 0xD8932B, noteRect)
-ctx.addPath(rounded(rect(282, 740, 330, 56), 28)); ctx.setFillColor(color(0xF5F0E6, 0.28)); ctx.fillPath()
+fillGradient(rounded(noteRect, 28), 0xF57D33, 0xE85F12, noteRect)
+ctx.addPath(rounded(rect(282, 740, 330, 56), 28)); ctx.setFillColor(color(0xFFFFFF, 0.26)); ctx.fillPath()
 
 let image = ctx.makeImage()!
 let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: out) as CFURL, UTType.png.identifier as CFString, 1, nil)!

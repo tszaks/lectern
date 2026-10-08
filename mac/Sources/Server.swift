@@ -96,6 +96,14 @@ final class Server {
                 return .json(["notes": notes, "labels": labels])
             }
             if what == "version" { return .json(deckVersion(deck)) }
+            if what == "order" && req.method == "PUT" {
+                // { order: [old slide index, ...] } puts the slides in a new order. Content does not change.
+                guard let body = (try? JSONSerialization.jsonObject(with: req.body)) as? [String: Any],
+                      let raw = body["order"] as? [Any] else { return .text(400, "Bad order") }
+                let order = raw.map { ($0 as? NSNumber).flatMap { n -> Int? in Double(n.intValue) == n.doubleValue ? n.intValue : nil } ?? -1 }
+                do { try reorderDeck(deck, order) } catch { return .text(409, "\(error)") }
+                return .json(["ok": true])
+            }
             if what == "notes" && req.method == "PUT" {
                 guard let body = (try? JSONSerialization.jsonObject(with: req.body)) as? [String: Any] else {
                     return .text(400, "Bad notes")
@@ -159,7 +167,16 @@ final class Server {
             .filter { !$0.hasPrefix(".") }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
         let htmls = files.filter { ["html", "htm"].contains(($0 as NSString).pathExtension.lowercased()) }
         if !htmls.isEmpty { return .html(htmls.contains("index.html") ? "index.html" : htmls[0]) }
-        let images = files.filter { Self.imageExts.contains(($0 as NSString).pathExtension.lowercased()) }
+        var images = files.filter { Self.imageExts.contains(($0 as NSString).pathExtension.lowercased()) }
+        // slides.txt (one file name per line) sets the order, after a reorder.
+        if let list = try? String(contentsOf: dir.appendingPathComponent("slides.txt"), encoding: .utf8) {
+            var listed: [String] = []
+            for line in list.components(separatedBy: "\n") {
+                let f = line.trimmingCharacters(in: .whitespaces)
+                if images.contains(f) && !listed.contains(f) { listed.append(f) }
+            }
+            images = listed + images.filter { !listed.contains($0) }
+        }
         return images.isEmpty ? nil : .images(images)
     }
     func imageDeckHtml(_ name: String, _ images: [String]) -> String {
@@ -236,6 +253,75 @@ final class Server {
             return String(line.dropFirst("# Speaker notes: ".count))
         }
         return ""
+    }
+
+    // ---------- reordering slides (same as reorderDeck in bin/lectern.js) ----------
+
+    struct Refusal: Error, CustomStringConvertible { let description: String; init(_ s: String) { description = s } }
+    private let sectionTagRE = try! NSRegularExpression(pattern: "</?section\\b[^>]*>", options: [.caseInsensitive])
+    private let commentRE = try! NSRegularExpression(pattern: "<!--[\\s\\S]*?-->")
+    private let leadRE = try! NSRegularExpression(pattern: "(?:\\s*<!--(?:(?!-->)[\\s\\S])*-->)*\\s*$")
+
+    /// Finds each top-level <section> block (start, end) in the deck HTML.
+    func slideBlocks(_ html: NSString) throws -> [(Int, Int)] {
+        var blocks: [(Int, Int)] = [], depth = 0, start = -1
+        for m in sectionTagRE.matches(in: html as String, range: NSRange(location: 0, length: html.length)) {
+            let tag = html.substring(with: m.range)
+            if !tag.hasPrefix("</") { if depth == 0 { start = m.range.location }; depth += 1 }
+            else { depth -= 1; if depth == 0 { blocks.append((start, m.range.location + m.range.length)) } }
+            if depth < 0 { throw Refusal("The deck HTML has an extra </section>.") }
+        }
+        if depth != 0 { throw Refusal("The deck HTML has a <section> that is not closed.") }
+        return blocks
+    }
+
+    func reorderDeck(_ deck: String, _ order: [Int]) throws {
+        guard let entry = deckEntry(deck), let dir = deckDir(deck) else { throw Refusal("No slides found.") }
+        let n = order.count
+        if Set(order).count != n || order.contains(where: { $0 < 0 || $0 >= n }) { throw Refusal("The new order must use each slide once.") }
+        switch entry {
+        case .images(let images):
+            if n != images.count { throw Refusal("The deck has \(images.count) slides, not \(n).") }
+            try (order.map { images[$0] }.joined(separator: "\n") + "\n").write(to: dir.appendingPathComponent("slides.txt"), atomically: true, encoding: .utf8)
+        case .html(let name):
+            let file = dir.appendingPathComponent(name)
+            let data = try Data(contentsOf: file)
+            guard let str = String(data: data, encoding: .utf8) else { throw Refusal("The deck HTML is not UTF-8 text.") }
+            let html = str as NSString
+            let blocks = try slideBlocks(html)
+            if blocks.count != n { throw Refusal("Lectern found \(blocks.count) slide blocks in the HTML but the deck shows \(n) slides, so it did not change anything.") }
+            // Each piece = the spaces and comments before a slide + the slide itself.
+            var pieceStarts: [Int] = []
+            for (i, (a, _)) in blocks.enumerated() {
+                var from = i > 0 ? blocks[i - 1].1 : a
+                if i == 0, let lead = leadRE.firstMatch(in: html.substring(to: a), range: NSRange(location: 0, length: a)) {
+                    from = a - lead.range.length
+                }
+                let between = html.substring(with: NSRange(location: from, length: a - from))
+                let stripped = commentRE.stringByReplacingMatches(in: between, range: NSRange(location: 0, length: (between as NSString).length), withTemplate: "")
+                if !stripped.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    throw Refusal("There is other content between slides, so Lectern did not change anything.")
+                }
+                pieceStarts.append(from)
+            }
+            let pieces = blocks.enumerated().map { i, b in html.substring(with: NSRange(location: pieceStarts[i], length: b.1 - pieceStarts[i])) }
+            let head = html.substring(to: pieceStarts[0]), tail = html.substring(from: blocks[n - 1].1)
+            // Keep a copy of the old file, just in case.
+            let backup = dir.appendingPathComponent(".lectern-backup")
+            try FileManager.default.createDirectory(at: backup, withIntermediateDirectories: true)
+            try data.write(to: backup.appendingPathComponent("\(Int(Date().timeIntervalSince1970 * 1000))-\(name)"))
+            try Data((head + order.map { pieces[$0] }.joined() + tail).utf8).write(to: file)
+        }
+        // Notes follow their slides.
+        if FileManager.default.fileExists(atPath: notesPath(deck).path) {
+            let (notes, labels) = readNotes(deck)
+            var nn: [String: String] = [:], nl: [String: String] = [:]
+            for (i, old) in order.enumerated() {
+                if let v = notes[String(old + 1)], !v.isEmpty { nn[String(i + 1)] = v }
+                if let v = labels[String(old + 1)], !v.isEmpty { nl[String(i + 1)] = v }
+            }
+            writeNotes(deck, nn, nl, n, readTitle(deck))
+        }
     }
 
     /// Changes when someone (or an agent) edits the deck or its notes, so open windows can refresh.

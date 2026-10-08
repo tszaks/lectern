@@ -70,7 +70,121 @@ final class SelfTest {
         }
     }
 
+    /// A real mouse event in the presenter window, at a point given in page (CSS) pixels.
+    func mouse(_ type: NSEvent.EventType, _ x: Double, _ y: Double) {
+        let w = app.mainWindow!
+        let h = w.contentView!.bounds.height
+        if let e = NSEvent.mouseEvent(with: type, location: NSPoint(x: x, y: h - y), modifierFlags: [],
+                                      timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: w.windowNumber,
+                                      context: nil, eventNumber: Int.random(in: 1...100000), clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1) {
+            switch type {
+            case .leftMouseDown: app.mainView.mouseDown(with: e)
+            case .leftMouseDragged: app.mainView.mouseDragged(with: e)
+            default: app.mainView.mouseUp(with: e)
+            }
+        }
+    }
+
+    /// Strip test: drag slide 2 to after slide 3 with the mouse, then click Save order.
+    func runStrip() {
+        let enc = deck.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? deck
+        app.mainView.load(URLRequest(url: URL(string: app.base + "/present/" + enc)!))
+        let thumbs = """
+        JSON.stringify((() => {
+          const f = document.getElementById('stripframe'), r = f.getBoundingClientRect();
+          const t = [...f.contentDocument.querySelectorAll('.lectern-thumb')].slice(0, 4).map(c => {
+            const b = c.getBoundingClientRect(); return { x: r.left + b.left + b.width / 2, y: r.top + b.top + b.height / 2, w: b.width, old: +c.dataset.old }; });
+          return { thumbs: t, changed: document.getElementById('strip').classList.contains('changed'),
+                   order: [...f.contentDocument.querySelectorAll('.lectern-thumb')].slice(0, 5).map(c => +c.dataset.old) };
+        })())
+        """
+        after(5) {
+            NSApp.activate(ignoringOtherApps: true)
+            self.app.mainWindow.makeKeyAndOrderFront(nil)
+            self.js(self.app.mainView, "document.getElementById('slides').click(); 'open'") { _ in }
+            self.after(4) {
+                self.js(self.app.mainView, thumbs) { v in
+                    print("strip before:", v ?? "nil"); fflush(stdout)
+                    self.results["strip_before"] = v
+                    guard let d = v as? [String: Any], let t = d["thumbs"] as? [[String: Any]], t.count >= 3,
+                          let x1 = t[1]["x"] as? Double, let y1 = t[1]["y"] as? Double,
+                          let x2 = t[2]["x"] as? Double, let w2 = t[2]["w"] as? Double else { return self.finishStrip() }
+                    let target = x2 + w2 * 0.35 // right half of slide 3
+                    self.results["strip_windowContentHeight"] = self.app.mainWindow.contentView!.bounds.height
+                    self.js(self.app.mainView, """
+                      (() => { const d = document.getElementById('stripframe').contentDocument; window.__ev = [];
+                        ['pointerdown','pointermove','pointerup','mousedown','mousemove','mouseup'].forEach(t =>
+                          d.addEventListener(t, e => window.__ev.push(t + ' ' + Math.round(e.clientX) + ',' + Math.round(e.clientY)), true));
+                        document.addEventListener('mousedown', e => window.__ev.push('TOP mousedown ' + e.clientX + ',' + e.clientY), true);
+                        return 'ok'; })()
+                    """) { _ in }
+                    self.after(0.3) { self.mouse(.leftMouseDown, x1, y1) }
+                    var step = 0.3
+                    for i in 1...12 {
+                        step += 0.05
+                        let x = x1 + (target - x1) * Double(i) / 12
+                        self.after(step) { self.mouse(.leftMouseDragged, x, y1) }
+                    }
+                    self.after(step + 0.2) { self.mouse(.leftMouseUp, target, y1) }
+                    self.after(step + 1) {
+                        self.js(self.app.mainView, "JSON.stringify(window.__ev.slice(0, 8).concat(['total ' + window.__ev.length]))") { ev in self.results["strip_events"] = ev }
+                        self.js(self.app.mainView, thumbs) { v in
+                            self.results["strip_afterDrag"] = v
+                            self.js(self.app.mainView, "document.getElementById('strip').classList.contains('changed') ? (document.getElementById('ordersave').click(), 'saved') : 'nothing to save'") { r in print("save:", r ?? ""); fflush(stdout) }
+                            self.after(4) { self.finishStrip() }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    func finishStrip() {
+        print("finishing", results["strip_events"] ?? "no events", results["strip_windowContentHeight"] ?? "", (results["strip_afterDrag"] as? [String: Any])?["order"] ?? ""); fflush(stdout)
+        snap(app.mainView, "strip") {
+            if let d = try? JSONSerialization.data(withJSONObject: self.results, options: [.prettyPrinted, .sortedKeys]) {
+                try? d.write(to: self.out.appendingPathComponent("strip.json"))
+            }
+            NSApp.terminate(nil)
+        }
+    }
+
+    /// Resize test: the presenter window at several sizes; checks nothing sticks out of the window.
+    func runResize() {
+        let enc = deck.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? deck
+        app.mainView.load(URLRequest(url: URL(string: app.base + "/present/" + enc)!))
+        let check = """
+        JSON.stringify((() => {
+          const out = [...document.querySelectorAll('header, main, #strip, #current, #preview, #notes, #nav, #open')]
+            .filter(el => el.offsetParent !== null || el.tagName === 'MAIN')
+            .map(el => { const r = el.getBoundingClientRect(); return { id: el.id || el.tagName, r: r.right > innerWidth + 1 || r.bottom > innerHeight + 1 }; })
+            .filter(x => x.r).map(x => x.id);
+          return { w: innerWidth, h: innerHeight, scrollW: document.documentElement.scrollWidth, scrollH: document.documentElement.scrollHeight, outside: out };
+        })())
+        """
+        let sizes: [NSSize] = [NSSize(width: 1280, height: 800), NSSize(width: 900, height: 560), NSSize(width: 700, height: 900), NSSize(width: 1800, height: 600)]
+        func step(_ i: Int) {
+            if i == sizes.count { return finishNamed("resize") }
+            app.mainWindow.setContentSize(sizes[i])
+            if i == 1 { js(app.mainView, "document.getElementById('slides').click(); 'strip'") { _ in } }
+            after(2) {
+                self.js(self.app.mainView, check) { v in
+                    self.results["size_\(Int(sizes[i].width))x\(Int(sizes[i].height))"] = v
+                    self.snap(self.app.mainView, "resize-\(i)") { step(i + 1) }
+                }
+            }
+        }
+        after(5) { step(0) }
+    }
+    func finishNamed(_ name: String) {
+        if let d = try? JSONSerialization.data(withJSONObject: results, options: [.prettyPrinted, .sortedKeys]) {
+            try? d.write(to: out.appendingPathComponent(name + ".json"))
+        }
+        NSApp.terminate(nil)
+    }
+
     func run() {
+        if ProcessInfo.processInfo.environment["LECTERN_SELFTEST_MODE"] == "resize" { return runResize() }
+        if ProcessInfo.processInfo.environment["LECTERN_SELFTEST_MODE"] == "strip" { return runStrip() }
         results["screens"] = NSScreen.screens.map { ["builtIn": CGDisplayIsBuiltin($0.displayID) != 0, "frame": NSStringFromRect($0.frame)] }
         let enc = deck.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? deck
         app.mainView.load(URLRequest(url: URL(string: app.base + "/present/" + enc)!))
