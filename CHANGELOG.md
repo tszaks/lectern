@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3 — 2026-10-08
+
+- **Lectern updates itself.** When it opens, Lectern looks for a newer version. If there is one, it asks "Update now?", downloads it, checks that it is signed by the same developer, and opens again. Also **Lectern → Check for Updates…**. It never asks during a show.
+
 ## 0.2.2 — 2026-10-08
 
 - **Clicker keeps working after you click a video.** Clicking a YouTube player used to take the keyboard, so the clicker stopped moving slides. Lectern now takes the keyboard back at once.

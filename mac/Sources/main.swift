@@ -30,6 +30,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
                 self.openMainWindow()
                 self.pendingOpen.forEach { self.openAny($0) }
                 self.pendingOpen = []
+                // Look for a newer Lectern a few seconds after opening (not in tests).
+                if self.env["LECTERN_UPDATETEST"] != nil { self.updater.check(quiet: false) }
+                else if !["LECTERN_SELFTEST", "LECTERN_HITTEST", "LECTERN_PACKTEST"].contains(where: { self.env[$0] != nil }) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 4) { self.updater.check(quiet: true) }
+                }
                 if let deck = self.env["LECTERN_SELFTEST"] { SelfTest(app: self, deck: deck).run() }
                 if self.env["LECTERN_HITTEST"] != nil { self.reportClickTargets() }
                 if let deck = self.env["LECTERN_PACKTEST"] { self.packTest(deck) }
@@ -44,6 +49,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { true }
+
+    lazy var updater = Updater(showRunning: { [unowned self] in self.showRunning })
+    @objc func checkForUpdates(_ s: Any?) {
+        if showRunning { NSSound.beep(); return }
+        updater.check(quiet: false)
+    }
 
     /// A show is running (slides on the TV, or full screen).
     var showRunning: Bool { audienceWindow != nil || awakeToken != nil }
@@ -546,6 +557,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
             let i = NSMenuItem(title: t, action: a, keyEquivalent: k); i.keyEquivalentModifierMask = mods; return i
         }
         menu("Lectern", [item("About Lectern", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), ""),
+                         item("Check for Updates…", #selector(checkForUpdates(_:)), ""),
                          .separator(),
                          item("Set Up Do Not Disturb…", #selector(setUpFocus(_:)), ""),
                          .separator(),
