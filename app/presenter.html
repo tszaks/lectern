@@ -10,7 +10,7 @@
     --accent: #f26b1d; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06); }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px/1.4 -apple-system, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-  body { display: grid; grid-template-rows: auto 1fr; height: 100vh; overflow: hidden; }
+  body { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); height: 100vh; overflow: hidden; }
   button { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
   button:hover { background: var(--side); }
   button.primary { background: #111; border-color: #111; color: #fff; font-weight: 600; }
@@ -22,7 +22,10 @@
   header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; }
   #home { color: var(--muted); text-decoration: none; font-size: 18px; }
   #home:hover { color: var(--text); }
-  #title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+  #title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+  header > * { flex-shrink: 0; }
+  header > #title { flex-shrink: 1; }
+  @media (max-width: 960px) { #clock, #status { display: none; } }
   #timer { font: 600 22px ui-monospace, SFMono-Regular, Menlo, monospace; cursor: pointer; min-width: 90px; text-align: right; color: var(--accent); }
   #timer.paused { color: var(--muted); }
   #clock { color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -33,7 +36,12 @@
   #blackbadge { display: none; background: #111; color: #fff; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; }
   body.black #blackbadge { display: inline-block; }
 
-  main { display: grid; grid-template-columns: 1.6fr 1fr; gap: 24px; padding: 8px 20px 20px; min-height: 0; }
+  /* Everything scales with the window, in both directions: each slide is the biggest 16:9 box that fits. */
+  main { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: clamp(12px, 2vw, 24px); padding: 8px clamp(12px, 1.5vw, 20px) clamp(12px, 1.5vw, 20px); min-height: 0; overflow: hidden; }
+  .stage { width: 100%; }
+  .left .stage { width: min(100cqw, calc((100cqh - 96px) * 16 / 9)); }
+  .right .stage { width: min(100cqw, calc(42cqh * 16 / 9)); }
+  @media (max-width: 760px) { main { grid-template-columns: minmax(0, 1fr); } .right .next { display: none; } }
   .label { color: var(--muted); font-size: 12px; font-weight: 500; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
   .screen { position: relative; aspect-ratio: 16 / 9; width: 100%; background: #000; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
   /* Decks always render at 1920x1080 and are scaled to fit, so every view matches the projector. */
@@ -43,11 +51,12 @@
   #preview { pointer-events: none; }
   #end { position: absolute; inset: 0; display: none; place-items: center; color: var(--muted); background: var(--side); }
   #end.on { display: grid; }
-  .left { display: flex; flex-direction: column; min-height: 0; }
+  .left { container-type: size; display: flex; flex-direction: column; align-items: center; min-height: 0; }
   #nav { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 16px; }
   #count { font-variant-numeric: tabular-nums; min-width: 90px; text-align: center; color: var(--muted); }
-  .right { display: grid; grid-template-rows: auto 1fr; gap: 24px; min-height: 0; }
-  .notes { display: flex; flex-direction: column; min-height: 0; }
+  .right { container-type: size; display: flex; flex-direction: column; gap: clamp(12px, 2vh, 24px); min-height: 0; }
+  .right .next { display: flex; justify-content: center; }
+  .notes { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   #notes { flex: 1; width: 100%; resize: none; background: var(--side); color: var(--text); border: 1px solid transparent; border-radius: 12px;
     padding: 16px 18px; font: 26px/1.45 -apple-system, system-ui, sans-serif; outline: none; }
   #notes:focus { background: var(--panel); border-color: var(--line); box-shadow: var(--shadow); }
@@ -57,7 +66,7 @@
   #saved { font-size: 12px; }
 
   /* Slide strip along the bottom, like PowerPoint: click to go to a slide, drag to change the order. */
-  body.strip { grid-template-rows: auto 1fr auto; }
+  body.strip { grid-template-rows: auto minmax(0, 1fr) auto; }
   #strip { display: none; border-top: 1px solid var(--line); background: var(--side); }
   body.strip #strip { display: block; }
   #strip .bar { display: flex; align-items: center; gap: 10px; padding: 8px 16px 0; color: var(--muted); font-size: 13px; }
@@ -65,7 +74,7 @@
   #strip .bar button { padding: 3px 12px; font-size: 13px; }
   #strip .bar .pending { display: none; }
   #strip.changed .bar .pending { display: inline-block; }
-  #stripframe { display: block; width: 100%; height: 150px; border: 0; }
+  #stripframe { display: block; width: 100%; height: clamp(110px, 17vh, 180px); border: 0; }
 </style>
 </head>
 <body>
@@ -81,8 +90,10 @@
 </header>
 <main>
   <section class="left">
-    <div class="label">Now</div>
-    <div class="screen"><iframe id="current" data-role="current" allow="fullscreen; autoplay"></iframe></div>
+    <div class="stage">
+      <div class="label">Now</div>
+      <div class="screen"><iframe id="current" data-role="current" allow="fullscreen; autoplay"></iframe></div>
+    </div>
     <div id="nav">
       <button id="prev" aria-label="Previous">←</button>
       <span id="count">–</span>
@@ -90,10 +101,10 @@
     </div>
   </section>
   <section class="right">
-    <div>
+    <div class="next"><div class="stage">
       <div class="label">Next</div>
       <div class="screen"><iframe id="preview" data-role="preview" tabindex="-1"></iframe><div id="end">End of deck</div></div>
-    </div>
+    </div></div>
     <div class="notes">
       <div class="label">
         <span>Notes <span id="saved"></span></span>
