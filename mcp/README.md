@@ -7,7 +7,7 @@ Needs Node 18+ and Google Chrome. Install once: `cd mcp && npm install`.
 ## Register it in Claude Code
 
 ```sh
-claude mcp add lectern -- node /Users/tyler/Projects/lectern/mcp/server.js
+claude mcp add lectern -- node /path/to/lectern/mcp/server.js
 ```
 
 Or put this in an MCP config file:
@@ -17,7 +17,7 @@ Or put this in an MCP config file:
   "mcpServers": {
     "lectern": {
       "command": "node",
-      "args": ["/Users/tyler/Projects/lectern/mcp/server.js"]
+      "args": ["/path/to/lectern/mcp/server.js"]
     }
   }
 }
