@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 — 2026-10-08
+
+- The presenter view notices when the slides window closes (the status goes back to "Audience not open").
+- Documentation, example deck, and files for AI tools (`llms.txt`, `AGENTS.md`).
+
 ## 0.1.0 — 2026-10-08
 
 First release.
