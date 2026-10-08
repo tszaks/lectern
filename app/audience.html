@@ -33,6 +33,7 @@ function act(m) {
   if (m.type === 'key' && BLANK_KEYS.includes(m.key)) return; // presenter owns blanking
   if (m.type === 'key' || m.type === 'goto') toFrame(m);
   if (m.type === 'click' && m.from !== 'audience') toFrame(m);
+  if (m.type === 'media' && m.from !== 'audience') toFrame(m);
   if (m.type === 'black') black.classList.toggle('on', m.on);
   if (m.type === 'reload') frame.src = frame.src; // the deck file changed
 }
@@ -45,6 +46,7 @@ addEventListener('message', e => {
   if (m.type === 'state') bus.postMessage({ type: 'audience-state', index: m.index, steps: m.steps });
   if (m.type === 'key') { bus.postMessage({ type: 'key', key: m.key }); act({ type: 'key', key: m.key }); }
   if (m.type === 'click') bus.postMessage({ type: 'click', path: m.path, from: 'audience' });
+  if (m.type === 'media') bus.postMessage({ type: 'media', path: m.path, state: m.state, time: m.time, from: 'audience' });
 });
 
 // Keys pressed while this window (not the deck inside it) has focus.

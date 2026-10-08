@@ -21,7 +21,11 @@
 
   const style = document.createElement('style');
   style.textContent = 'aside.notes{display:none!important}' +
-    (role === 'preview' ? '*,*::before,*::after{transition-duration:0s!important;transition-delay:0s!important}' : '');
+    (role === 'preview'
+      // Freeze the "Next" copy: no fades and no moving parts, so it costs little on a slow Mac.
+      ? '*,*::before,*::after{transition-duration:0s!important;transition-delay:0s!important;' +
+        'animation-delay:0s!important;animation-duration:1ms!important;animation-iteration-count:1!important;animation-fill-mode:both!important}'
+      : '');
   document.documentElement.appendChild(style);
 
   // ---------- reading the deck ----------
@@ -160,17 +164,93 @@
     else if (m.type === 'click') { const el = fromPath(m.path); if (el) el.click(); }
     else if (m.type === 'goto') goTo(m.index, m.steps);
     else if (m.type === 'report') report(true);
+    else if (m.type === 'media') applyMedia(m);
     reportSoon();
   });
   addEventListener('hashchange', reportSoon);
 
-  // Only the audience plays sound and embedded video. The presenter copies stay quiet.
+  // ---------- video ----------
+  // Videos play in every view at the same time: with sound on the audience screen, muted for the presenter.
+  // Play, pause and jumps in one view happen in the others. This works for <video> and for YouTube
+  // players. Other embedded players (for example TED's) cannot be controlled, so they play on the
+  // audience screen only.
+  const isYouTube = f => /youtube(-nocookie)?\.com\/embed\//.test(f.src || f.dataset.src || '');
+  const players = new Map(); // YouTube iframe -> { state, time, quietUntil }
+  const yt = (f, func, args = []) => f.contentWindow && f.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), '*');
+  const shareMedia = (el, state, time) => post({ type: 'media', path: pathTo(el), state, time });
+
   function quiet(root) {
-    if (role === 'audience') return;
-    root.querySelectorAll('video, audio').forEach(m => { m.muted = true; });
     root.querySelectorAll('iframe').forEach(f => {
-      if (!f.srcdoc) f.srcdoc = '<body style="margin:0;display:grid;place-items:center;height:100vh;background:#111;color:#999;font:600 28px system-ui">Plays on the audience screen</body>';
+      if (isYouTube(f)) {
+        // YouTube only reports and takes commands when "enablejsapi=1" is in its address.
+        for (const attr of ['src', 'data-src']) {
+          const v = f.getAttribute(attr);
+          if (v && !/enablejsapi=1/.test(v)) f.setAttribute(attr, v + (v.includes('?') ? '&' : '?') + 'enablejsapi=1');
+        }
+        if (role !== 'preview' && !f.dataset.lecternWatched) {
+          f.dataset.lecternWatched = '1';
+          f.addEventListener('load', () => {
+            const p = { state: -1, time: 0, quietUntil: 0, heard: false };
+            players.set(f, p);
+            // The player may not be ready yet, so say "listening" until it answers (as YouTube's own script does).
+            let tries = 0;
+            const hello = setInterval(() => {
+              if (p.heard || ++tries > 40 || !f.contentWindow) return clearInterval(hello);
+              f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
+            }, 250);
+          });
+        }
+        if (role !== 'preview') return;
+      }
+      if (role !== 'audience' && !f.srcdoc) {
+        f.srcdoc = '<body style="margin:0;display:grid;place-items:center;height:100vh;background:#111;color:#999;font:600 28px system-ui">Plays on the audience screen</body>';
+      }
     });
+    if (role !== 'audience') root.querySelectorAll('video, audio').forEach(m => { m.muted = true; });
+  }
+
+  // Messages from YouTube players: "ready", and the play state with the time.
+  addEventListener('message', e => {
+    if (!/youtube(-nocookie)?\.com$/.test(new URL(e.origin || 'null', location.href).hostname || '')) return;
+    let d; try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
+    const f = [...players.keys()].find(x => x.contentWindow === e.source);
+    if (!f || !d) return;
+    const p = players.get(f);
+    if (!p.heard) { p.heard = true; if (role !== 'audience') yt(f, 'mute'); }
+    const info = d.info || {};
+    if (typeof info.currentTime === 'number') p.time = info.currentTime;
+    if (typeof info.playerState === 'number' && info.playerState !== p.state) {
+      p.state = info.playerState;
+      // 1 = playing, 2 = paused. Share only changes the person made, not ones Lectern made.
+      if ((p.state === 1 || p.state === 2) && Date.now() > p.quietUntil) shareMedia(f, p.state === 1 ? 'play' : 'pause', p.time);
+    }
+  });
+
+  // <video> and <audio>
+  const mediaQuietUntil = new WeakMap();
+  for (const type of ['play', 'pause', 'seeked']) {
+    document.addEventListener(type, e => {
+      const el = e.target;
+      if (role === 'preview' || (mediaQuietUntil.get(el) || 0) > Date.now()) return;
+      shareMedia(el, el.paused ? 'pause' : 'play', el.currentTime);
+    }, true);
+  }
+
+  function applyMedia(m) {
+    const el = fromPath(m.path);
+    if (!el || role === 'preview') return;
+    if (el.tagName === 'IFRAME') {
+      const p = players.get(el);
+      if (!p) return;
+      p.quietUntil = Date.now() + 2000;
+      if (role !== 'audience') yt(el, 'mute');
+      if (Math.abs(p.time - m.time) > 2) yt(el, 'seekTo', [m.time, true]);
+      yt(el, m.state === 'play' ? 'playVideo' : 'pauseVideo');
+    } else if (el.tagName === 'VIDEO' || el.tagName === 'AUDIO') {
+      mediaQuietUntil.set(el, Date.now() + 1000);
+      if (Math.abs(el.currentTime - m.time) > 1) el.currentTime = m.time;
+      if (m.state === 'play') el.play().catch(() => {}); else el.pause();
+    }
   }
 
   function start() {

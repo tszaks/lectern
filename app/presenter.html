@@ -33,12 +33,10 @@
   /* Decks always render at 1920x1080 and are scaled to fit, so every view matches the projector. */
   .screen iframe { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; border: 0;
     transform: translate(-50%, -50%) scale(var(--fit, .25)); }
-  /* "Next" is a light card (title, or the picture for image decks), not a third live copy of the deck. */
-  #nextcard { display: grid; place-items: center; padding: 24px; background: var(--panel); border: 1px solid var(--line); }
-  #nextcard img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; display: none; }
-  #nextcard.image img { display: block; }
-  #nexttext { font: 600 28px/1.25 -apple-system, system-ui, sans-serif; text-align: center; color: var(--text); }
-  #nexttext small { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+  /* "Next" is a frozen copy of the deck: it looks exactly like the slide, with no animation. */
+  #preview { pointer-events: none; }
+  #end { position: absolute; inset: 0; display: none; place-items: center; color: var(--muted); background: #000; }
+  #end.on { display: grid; }
   .left { display: flex; flex-direction: column; min-height: 0; }
   #nav { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 14px; }
   #count { font-variant-numeric: tabular-nums; min-width: 90px; text-align: center; }
@@ -75,7 +73,7 @@
   <section class="right">
     <div>
       <div class="label">Next</div>
-      <div class="screen" id="nextcard"><img id="nextimg" alt=""><div id="nexttext"></div></div>
+      <div class="screen"><iframe id="preview" data-role="preview" tabindex="-1"></iframe><div id="end">End of deck</div></div>
     </div>
     <div class="notes">
       <div class="label">
@@ -90,7 +88,7 @@
 // On a website, "/presenter" must end in "/" so the relative links below work.
 if (!/^\/(present|audience)\//.test(location.pathname) && !/(\/|\.html)$/.test(location.pathname)) location.replace(location.pathname + '/' + location.search);
 const $ = id => document.getElementById(id);
-const current = $('current'), notesBox = $('notes');
+const current = $('current'), preview = $('preview'), notesBox = $('notes');
 // LOCAL: run by the Lectern app (bin/lectern.js), which can save notes.md.
 // Otherwise this page sits in a "presenter/" folder inside the deck's own website (for example on Vercel).
 const LOCAL = location.pathname.startsWith('/present/');
@@ -104,13 +102,14 @@ const BLANK_KEYS = ['b', 'B', '.'];
 const NAV_KEYS = ['ArrowRight','ArrowLeft','ArrowUp','ArrowDown','PageDown','PageUp',' ','Enter','Backspace','Home','End'];
 
 let index = 0, steps = 0, count = 0, deckNotes = [], labels = [], title = '', fileNotes = {};
-let black = false, audienceIndex = null, audienceSteps = 0, images = [], restore = null, outlineSent = '';
+let black = false, audienceIndex = null, audienceSteps = 0, previewReady = false, restore = null, outlineSent = '';
 
 // ---------- one place where every action happens ----------
 function act(m) {
   if (m.type === 'key' && BLANK_KEYS.includes(m.key)) { setBlack(!black); return; }
   if (m.type === 'key') { toFrame(current, m); startTimer(); }
   if (m.type === 'click' && m.from !== 'current') toFrame(current, m);
+  if (m.type === 'media' && m.from !== 'current') toFrame(current, m);
   if (m.type === 'hello') { bus.postMessage({ type: 'goto', index, steps }); bus.postMessage({ type: 'black', on: black }); }
   if (m.type === 'audience-state') { audienceIndex = m.index; audienceSteps = m.steps; showStatus(); }
 }
@@ -131,21 +130,24 @@ addEventListener('message', e => {
   if (e.source === current.contentWindow) {
     if (m.type === 'key') send({ type: 'key', key: m.key });
     if (m.type === 'click') send({ type: 'click', path: m.path, from: 'current' });
+    if (m.type === 'media') send({ type: 'media', path: m.path, state: m.state, time: m.time, from: 'current' });
     if (m.type === 'ready' && restore) { toFrame(current, { type: 'goto', ...restore }); restore = null; return; }
     if (m.type === 'state') onState(m);
     // The presenter leads: when it (re)loads, an open audience window follows it.
     if (m.type === 'ready') bus.postMessage({ type: 'goto', index, steps });
+  } else if (e.source === preview.contentWindow && m.type === 'ready') {
+    previewReady = true; previewIndex = -1; updatePreview();
   }
 });
 
 function onState(s) {
   if (restore) return; // the deck is reloading; keep the old position until it is back
   const moved = s.index !== index || s.count !== count;
-  index = s.index; steps = s.steps; count = s.count; deckNotes = s.notes; labels = s.labels; images = s.images || [];
+  index = s.index; steps = s.steps; count = s.count; deckNotes = s.notes; labels = s.labels;
   if (s.title) { title = s.title; $('title').textContent = title; document.title = 'Presenter · ' + title; }
   $('count').textContent = `${index + 1} / ${count}`;
   if (moved || document.activeElement !== notesBox) showNotes();
-  showNext();
+  if (moved) updatePreview();
   showStatus();
   sendOutline();
 }
@@ -159,15 +161,16 @@ function sendOutline() {
   fetch(api('notes'), { method: 'PUT', body: JSON.stringify({ outline: labels, title }) });
 }
 
-function showNext() {
-  const n = index + 1, card = $('nextcard'), text = $('nexttext');
-  card.classList.toggle('image', !!images[n]);
-  if (images[n]) $('nextimg').src = images[n];
-  text.replaceChildren();
-  if (n >= count) { text.textContent = 'End of deck'; return; }
-  const small = document.createElement('small');
-  small.textContent = `Slide ${n + 1}`;
-  text.append(small, labels[n] || '');
+// Wait a moment after each slide change, so the slide on screen gets the computer's attention first.
+let previewIndex = -1, previewTimer = null;
+function updatePreview() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => {
+    if (!previewReady || previewIndex === index + 1) return;
+    previewIndex = index + 1;
+    $('end').classList.toggle('on', previewIndex >= count);
+    if (previewIndex < count) toFrame(preview, { type: 'goto', index: previewIndex });
+  }, 400);
 }
 
 function showStatus() {
@@ -231,7 +234,8 @@ if (LOCAL) setInterval(() => {
 function reloadDeck() {
   restore = { index, steps };
   outlineSent = '';
-  current.src = current.src;
+  previewReady = false;
+  current.src = current.src; preview.src = preview.src;
   bus.postMessage({ type: 'reload' });
 }
 
@@ -307,7 +311,7 @@ const fitObserver = new ResizeObserver(entries => entries.forEach(e => {
   const r = e.contentRect;
   e.target.style.setProperty('--fit', Math.min(r.width / 1920, r.height / 1080));
 }));
-fitObserver.observe(current.parentElement);
+document.querySelectorAll('.screen').forEach(el => fitObserver.observe(el));
 
 // ---------- start ----------
 // On a website there is no server to add the adapter to the deck, so add it here (same website, so this is allowed).
@@ -320,8 +324,8 @@ function addAdapter(frame) {
     w.document.head.appendChild(s);
   });
 }
-addAdapter(current);
-loadNotes().finally(() => { current.src = deckUrl; });
+addAdapter(current); addAdapter(preview);
+loadNotes().finally(() => { current.src = deckUrl; preview.src = deckUrl; });
 showStatus();
 </script>
 </body>
