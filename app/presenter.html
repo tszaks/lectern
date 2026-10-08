@@ -26,7 +26,7 @@
   header > * { flex-shrink: 0; }
   header > #title { flex-shrink: 1; }
   @media (max-width: 960px) { #clock, #status { display: none; } }
-  #timer { font: 600 22px ui-monospace, SFMono-Regular, Menlo, monospace; cursor: pointer; min-width: 90px; text-align: right; color: var(--accent); }
+  #timer { font: 600 22px -apple-system, system-ui, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -.01em; cursor: pointer; min-width: 90px; text-align: right; color: var(--accent); }
   #timer.paused { color: var(--muted); }
   #clock { color: var(--muted); font-variant-numeric: tabular-nums; }
   #status { color: var(--muted); font-size: 13px; }
@@ -46,7 +46,7 @@
   .screen { position: relative; aspect-ratio: 16 / 9; width: 100%; background: #000; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
   /* Decks always render at 1920x1080 and are scaled to fit, so every view matches the projector. */
   .screen iframe { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; border: 0;
-    transform: translate(-50%, -50%) scale(var(--fit, .25)); }
+    transform: translate(-50%, -50%) scale(var(--fit, .25)); will-change: transform; }
   /* "Next" is a frozen copy of the deck: it looks exactly like the slide, with no animation. */
   #preview { pointer-events: none; }
   #end { position: absolute; inset: 0; display: none; place-items: center; color: var(--muted); background: var(--side); }
@@ -178,7 +178,8 @@ addEventListener('message', e => {
 function onState(s) {
   if (restore) return; // the deck is reloading; keep the old position until it is back
   const moved = s.index !== index || s.count !== count;
-  index = s.index; steps = s.steps; count = s.count; deckNotes = s.notes; labels = s.labels;
+  index = s.index; steps = s.steps; count = s.count;
+  if (s.labels) { deckNotes = s.notes; labels = s.labels; } // sent only when they change
   if (s.title) { title = s.title; $('title').textContent = title; document.title = 'Presenter · ' + title; }
   $('count').textContent = `${index + 1} / ${count}`;
   if (moved || document.activeElement !== notesBox) showNotes();
@@ -206,7 +207,7 @@ function updatePreview() {
     previewIndex = index + 1;
     $('end').classList.toggle('on', previewIndex >= count);
     if (previewIndex < count) toFrame(preview, { type: 'goto', index: previewIndex });
-  }, 400);
+  }, 0);
 }
 
 function showStatus() {

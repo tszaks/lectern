@@ -88,7 +88,9 @@ $('picker').onchange = () => {
   const deck = files[0].webkitRelativePath.split('/')[0];
   upload(deck, files.map(f => ({ file: f, path: f.webkitRelativePath.split('/').slice(1).join('/') })).filter(f => !skip(f.path)));
 };
-$('drop').onclick = () => $('picker').click();
+// In the Mac app, choosing a folder links it (nothing is copied), and it stays in the list.
+const macApp = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.lectern;
+$('drop').onclick = () => macApp ? macApp.postMessage('addDeck') : $('picker').click();
 $('drop').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') $('picker').click(); };
 
 // Read a dropped folder (or loose files) into { file, path } pairs.

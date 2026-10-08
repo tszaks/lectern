@@ -79,19 +79,25 @@
   const shownSteps = slide => slide ? slide.querySelectorAll('.step.shown, .fragment.visible').length : 0;
 
   let lastSent = '';
+  // Titles and notes are read once, and again only when slides are added or removed.
+  // Every slide change after that sends just the slide number, which keeps things fast.
+  let outlineDirty = true;
   function report(force) {
     if (role === 'strip') return;
     const all = slides();
     const index = currentIndex();
-    const state = {
-      type: 'state', index, count: all.length, title: document.title,
-      notes: all.map(notesFor), labels: all.map(labelFor), images: all.map(imageOf), steps: shownSteps(all[index]),
-    };
+    const state = { type: 'state', index, count: all.length, title: document.title, steps: shownSteps(all[index]) };
     const key = JSON.stringify(state);
+    if (outlineDirty || force) {
+      outlineDirty = false;
+      Object.assign(state, { notes: all.map(notesFor), labels: all.map(labelFor), images: all.map(imageOf) });
+      force = true;
+    }
     if (force || key !== lastSent) { lastSent = key; post(state); }
   }
   let pending = null;
-  const reportSoon = () => { clearTimeout(pending); pending = setTimeout(report, 30); };
+  // Report on the next screen refresh. Many changes at once still make one report.
+  const reportSoon = () => { if (!pending) pending = setTimeout(() => { pending = null; report(); }, 0); };
 
   // ---------- doing things to the deck ----------
   function press(key) {
@@ -106,15 +112,21 @@
   // Jump to slide n with the first `steps` click-to-reveal steps shown.
   function goTo(n, steps = 0) {
     if (window.Reveal && typeof window.Reveal.slide === 'function') { window.Reveal.slide(n, 0, steps - 1); return reportSoon(); }
-    // Start clean, so earlier visits do not leave steps showing.
-    document.querySelectorAll('.step.shown').forEach(el => el.classList.remove('shown'));
-    document.querySelectorAll('.fragment.visible').forEach(el => el.classList.remove('visible'));
-    press('Home');
+    // Going forward: step from where we are (the "Next" view usually moves just one slide).
+    // Going back: start again from the first slide, with all steps hidden.
+    if (n < currentIndex()) {
+      document.querySelectorAll('.step.shown').forEach(el => el.classList.remove('shown'));
+      document.querySelectorAll('.fragment.visible').forEach(el => el.classList.remove('visible'));
+      press('Home');
+    }
     for (let i = 0; i < 1000 && currentIndex() < n; i++) {
       const before = currentIndex(), stepsLeft = hasHiddenSteps(slides()[before]);
       press('ArrowRight');
       if (currentIndex() === before && !stepsLeft) break; // deck stopped moving
     }
+    // The slide we arrived at starts with its steps hidden.
+    const target = slides()[n];
+    if (target) target.querySelectorAll('.step.shown, .fragment.visible').forEach(el => el.classList.remove('shown', 'visible'));
     for (let i = 0; i < steps && currentIndex() === n && hasHiddenSteps(slides()[n]); i++) press('ArrowRight');
     reportSoon();
   }
@@ -334,10 +346,19 @@
   function start() {
     if (role === 'strip') { buildStrip(); post({ type: 'ready' }); return; }
     quiet(document);
+    // Watch only what matters: slides changing class, steps appearing, and slides being added.
+    // Animation changes (inline styles) are ignored, so a busy slide does not slow Lectern down.
+    const isSlideish = el => el.nodeType === 1 && (el.matches('section, .slide, .step, .fragment') || !!el.querySelector('section, .slide'));
     new MutationObserver(muts => {
-      for (const m of muts) if (m.type === 'childList') m.addedNodes.forEach(n => n.nodeType === 1 && quiet(n.parentElement || document));
-      reportSoon();
-    }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'aria-current'] });
+      let relevant = false;
+      for (const m of muts) {
+        if (m.type === 'childList') {
+          m.addedNodes.forEach(n => n.nodeType === 1 && quiet(n.parentElement || document));
+          if ([...m.addedNodes, ...m.removedNodes].some(isSlideish)) { outlineDirty = true; relevant = true; }
+        } else if (isSlideish(m.target) && m.target.matches('section, .slide, .step, .fragment')) relevant = true;
+      }
+      if (relevant) reportSoon();
+    }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'hidden', 'aria-current'] });
     report(true);
     post({ type: 'ready' });
   }

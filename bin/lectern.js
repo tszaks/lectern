@@ -51,22 +51,34 @@ const IMAGE_RE = /\.(png|jpe?g|gif|webp|avif|svg)$/i;
 const naturally = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 const safeName = n => typeof n === 'string' && /^[^/\\]+$/.test(n) && !n.startsWith('.');
 
+// A library entry is a folder, or a link to one HTML file (an imported file).
+function linkedFile(name) {
+  if (direct.size) { const d = direct.get(name); return d?.file ? path.join(d.dir, d.file) : null; }
+  if (!safeName(name)) return null;
+  try {
+    const real = fs.realpathSync(path.join(LIBRARY, name));
+    return fs.statSync(real).isFile() && /\.html?$/i.test(real) ? real : null;
+  } catch { return null; }
+}
 function deckDir(name) {
   if (direct.size) return direct.get(name)?.dir || null;
   if (!safeName(name)) return null;
+  const file = linkedFile(name);
+  if (file) return path.dirname(file);
   const dir = path.join(LIBRARY, name);
   return fs.existsSync(dir) && fs.statSync(dir).isDirectory() ? dir : null;
 }
 function listDecks() {
   if (direct.size) return [...direct.keys()];
-  return fs.readdirSync(LIBRARY, { withFileTypes: true })
-    .filter(d => d.isDirectory() && !d.name.startsWith('.')).map(d => d.name).sort(naturally);
+  // deckDir follows links, so linked folders and imported files count too.
+  return fs.readdirSync(LIBRARY).filter(n => !n.startsWith('.') && deckDir(n)).sort(naturally);
 }
 // What to show for a deck: its HTML page, or a page we build from its images.
 function deckEntry(name) {
   const dir = deckDir(name);
   if (!dir) return null;
-  if (direct.get(name)?.file) return { html: direct.get(name).file };
+  const file = linkedFile(name);
+  if (file) return { html: path.basename(file) };
   const files = fs.readdirSync(dir).filter(f => !f.startsWith('.'));
   const htmls = files.filter(f => /\.html?$/i.test(f));
   if (htmls.length) return { html: htmls.includes('index.html') ? 'index.html' : htmls.sort(naturally)[0] };
@@ -107,7 +119,11 @@ A note here wins over a note written inside the deck's HTML (<aside class="notes
 Lectern shows changes to this file in the presenter view within a few seconds. -->`;
 const HEADING_RE = /^## Slide (\d+)\b.*$/gm;
 
-function notesPath(name) { return path.join(deckDir(name), 'notes.md'); }
+// A folder deck keeps notes in notes.md. An imported HTML file keeps them in <file name>.notes.md beside it.
+function notesPath(name) {
+  const file = linkedFile(name);
+  return file ? file.replace(/\.html?$/i, '.notes.md') : path.join(deckDir(name), 'notes.md');
+}
 function readNotes(name) {
   let text;
   try { text = fs.readFileSync(notesPath(name), 'utf8'); } catch { return { notes: {}, labels: {} }; }
@@ -299,7 +315,7 @@ function deckVersion(deck) {
       const f = path.join(d, e.name);
       if (e.isDirectory()) { if (depth < 2) walk(f, depth + 1); continue; }
       const t = fs.statSync(f).mtimeMs;
-      if (e.name === 'notes.md' && d === dir) notes = Math.max(notes, t); else slides = Math.max(slides, t);
+      if (f === notesPath(deck)) notes = Math.max(notes, t); else slides = Math.max(slides, t);
     }
   };
   walk(dir, 0);
