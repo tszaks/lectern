@@ -70,7 +70,12 @@ function deckEntry(name) {
   const files = fs.readdirSync(dir).filter(f => !f.startsWith('.'));
   const htmls = files.filter(f => /\.html?$/i.test(f));
   if (htmls.length) return { html: htmls.includes('index.html') ? 'index.html' : htmls.sort(naturally)[0] };
-  const images = files.filter(f => IMAGE_RE.test(f)).sort(naturally);
+  let images = files.filter(f => IMAGE_RE.test(f)).sort(naturally);
+  // slides.txt (one file name per line) sets the order, after a reorder.
+  try {
+    const listed = fs.readFileSync(path.join(dir, 'slides.txt'), 'utf8').split('\n').map(l => l.trim()).filter(l => images.includes(l));
+    images = [...listed, ...images.filter(f => !listed.includes(f))];
+  } catch {}
   return images.length ? { images } : null;
 }
 function imageDeckHtml(name, images) {
@@ -194,6 +199,12 @@ const server = http.createServer(async (req, res) => {
       if (what === 'notes' && req.method === 'GET') return json(res, readNotes(deck));
       // Changes when an agent (or anyone) edits the deck or its notes, so open windows can refresh.
       if (what === 'version') return json(res, deckVersion(deck));
+      if (what === 'order' && req.method === 'PUT') {
+        // { order: [old slide index, ...] } puts the slides in a new order. Content does not change.
+        const { order } = JSON.parse(await readBody(req, 1e6));
+        try { reorderDeck(deck, order); } catch (e) { return send(res, 409, e.message); }
+        return json(res, { ok: true });
+      }
       if (what === 'notes' && req.method === 'PUT') {
         // { slide, text } saves one note. { outline: [labels], title } makes sure every slide has a heading.
         const body = JSON.parse(await readBody(req, 2e6));
@@ -227,6 +238,58 @@ const server = http.createServer(async (req, res) => {
     send(res, 500, String(e.message));
   }
 });
+// ---------- reordering slides ----------
+// Finds each top-level <section> block in the deck HTML (with the comments just before it),
+// and writes the blocks back in the new order. If anything between slides is not just
+// spaces or comments, it stops, so it never breaks a deck it does not understand.
+function slideBlocks(html) {
+  const re = /<\/?section\b[^>]*>/gi;
+  const blocks = [];
+  let depth = 0, start = -1, m;
+  while ((m = re.exec(html))) {
+    if (m[0][1] !== '/') { if (depth++ === 0) start = m.index; }
+    else if (--depth === 0) blocks.push([start, m.index + m[0].length]);
+    if (depth < 0) throw new Error('The deck HTML has an extra </section>.');
+  }
+  if (depth !== 0) throw new Error('The deck HTML has a <section> that is not closed.');
+  return blocks;
+}
+function reorderDeck(deck, order) {
+  const entry = deckEntry(deck), dir = deckDir(deck);
+  if (!entry) throw new Error('No slides found.');
+  const count = entry.images ? entry.images.length : null;
+  const n = order.length;
+  if (!order.every(Number.isInteger) || new Set(order).size !== n || order.some(i => i < 0 || i >= n)) throw new Error('The new order must use each slide once.');
+  if (entry.images) {
+    if (n !== count) throw new Error(`The deck has ${count} slides, not ${n}.`);
+    fs.writeFileSync(path.join(dir, 'slides.txt'), order.map(i => entry.images[i]).join('\n') + '\n');
+  } else {
+    const file = path.join(dir, entry.html), html = fs.readFileSync(file, 'utf8');
+    const blocks = slideBlocks(html);
+    if (blocks.length !== n) throw new Error(`Lectern found ${blocks.length} slide blocks in the HTML but the deck shows ${n} slides, so it did not change anything.`);
+    // Each piece = the spaces and comments before a slide + the slide itself.
+    const pieces = blocks.map(([a, b], i) => {
+      let from = i ? blocks[i - 1][1] : a;
+      if (!i) { const lead = html.slice(0, a).match(/(?:\s*<!--(?:(?!-->)[\s\S])*-->)*\s*$/); from = a - lead[0].length; }
+      const between = html.slice(from, a);
+      if (between.replace(/<!--[\s\S]*?-->/g, '').trim()) throw new Error('There is other content between slides, so Lectern did not change anything.');
+      return html.slice(from, b);
+    });
+    const head = html.slice(0, blocks[0][0] - (pieces[0].length - (blocks[0][1] - blocks[0][0])));
+    const tail = html.slice(blocks[n - 1][1]);
+    // Keep a copy of the old file, just in case.
+    const backup = path.join(dir, '.lectern-backup');
+    fs.mkdirSync(backup, { recursive: true });
+    fs.writeFileSync(path.join(backup, `${Date.now()}-${entry.html}`), html);
+    fs.writeFileSync(file, head + order.map(i => pieces[i]).join('') + tail);
+  }
+  // Notes follow their slides.
+  if (fs.existsSync(notesPath(deck))) {
+    const { notes, labels } = readNotes(deck), nn = {}, nl = {};
+    order.forEach((old, i) => { if (notes[old + 1]) nn[i + 1] = notes[old + 1]; if (labels[old + 1]) nl[i + 1] = labels[old + 1]; });
+    writeNotes(deck, nn, nl, n, readTitle(deck));
+  }
+}
 function deckVersion(deck) {
   const dir = deckDir(deck);
   let slides = 0, notes = 0;
