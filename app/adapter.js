@@ -7,7 +7,8 @@
 // When the deck is opened directly (not inside Lectern) it does nothing.
 (() => {
   const frame = window.frameElement;
-  if (!frame || !frame.dataset.role) return;
+  if (!frame || !frame.dataset.role || window.__lectern) return;
+  window.__lectern = true;
   const role = frame.dataset.role; // 'audience' | 'current' | 'preview'
   const post = msg => window.parent.postMessage({ lectern: true, role, ...msg }, location.origin);
 
@@ -63,6 +64,11 @@
     if (!label) { const img = slide.querySelector('img'); label = img ? clean(img.alt) || decodeURIComponent(img.src.split('/').pop()) : ''; }
     return label.length > 70 ? label.slice(0, 67) + '…' : label;
   }
+  // For slides that are just one picture (image decks), the picture's address, for the "Next" card.
+  function imageOf(slide) {
+    const only = slide.children.length === 1 && slide.firstElementChild;
+    return only && only.tagName === 'IMG' ? only.src : '';
+  }
   function hasHiddenSteps(slide) {
     return !!slide.querySelector('.step:not(.shown), .fragment:not(.visible)');
   }
@@ -74,7 +80,7 @@
     const index = currentIndex();
     const state = {
       type: 'state', index, count: all.length, title: document.title,
-      notes: all.map(notesFor), labels: all.map(labelFor), steps: shownSteps(all[index]),
+      notes: all.map(notesFor), labels: all.map(labelFor), images: all.map(imageOf), steps: shownSteps(all[index]),
     };
     const key = JSON.stringify(state);
     if (force || key !== lastSent) { lastSent = key; post(state); }

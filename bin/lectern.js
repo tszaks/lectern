@@ -13,7 +13,20 @@ import { spawn } from 'node:child_process';
 const APP_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'app');
 const args = process.argv.slice(2);
 if (args.includes('-h') || args.includes('--help')) {
-  console.log('Usage: lectern [deck folder or .html file] [--port 4321] [--no-open]');
+  console.log('Usage: lectern [deck folder or .html file] [--port 4321] [--no-open]\n       lectern export <deck folder>   add a presenter view to a deck website');
+  process.exit(0);
+}
+// lectern export <deck folder>: copy the presenter into the deck, so the deck's own website
+// (for example on Vercel) has a presenter view at /presenter/. No server needed there.
+if (args[0] === 'export') {
+  const dir = path.resolve(args[1] || '.');
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) { console.error(`Not a folder: ${dir}`); process.exit(1); }
+  const out = path.join(dir, 'presenter');
+  fs.mkdirSync(out, { recursive: true });
+  fs.copyFileSync(path.join(APP_DIR, 'presenter.html'), path.join(out, 'index.html'));
+  fs.copyFileSync(path.join(APP_DIR, 'audience.html'), path.join(out, 'audience.html'));
+  fs.copyFileSync(path.join(APP_DIR, 'adapter.js'), path.join(out, 'adapter.js'));
+  console.log(`Added the presenter to ${out}. Publish the deck, then open <your site>/presenter/`);
   process.exit(0);
 }
 const portArg = args.indexOf('--port');

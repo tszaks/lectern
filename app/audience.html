@@ -20,8 +20,11 @@
 <div id="black"></div>
 <div id="hint">Move this window to the projector, then press F for full screen</div>
 <script>
+// On a website, "/presenter" must end in "/" so the relative links below work.
+if (!/^\/(present|audience)\//.test(location.pathname) && !/(\/|\.html)$/.test(location.pathname)) location.replace(location.pathname + '/' + location.search);
 const frame = document.getElementById('deck'), black = document.getElementById('black');
-const deck = decodeURIComponent(location.pathname.split('/')[2] || '');
+const LOCAL = location.pathname.startsWith('/audience/');
+const deck = LOCAL ? decodeURIComponent(location.pathname.split('/')[2] || '') : location.pathname.replace(/presenter\/.*$/, '');
 const bus = new BroadcastChannel('lectern:' + deck);
 const toFrame = m => frame.contentWindow.postMessage({ lectern: true, ...m }, location.origin);
 const BLANK_KEYS = ['b', 'B', '.'];
@@ -56,8 +59,15 @@ setTimeout(() => document.getElementById('hint').style.opacity = 0, 5000);
 
 const fit = () => frame.style.setProperty('--fit', Math.min(innerWidth / 1920, innerHeight / 1080));
 addEventListener('resize', fit); fit();
-frame.src = `/deck/${encodeURIComponent(deck)}/`;
-document.title = deck + ' · Audience';
+frame.addEventListener('load', () => {
+  const w = frame.contentWindow;
+  if (LOCAL || !w || w.__lectern) return; // on a website, add the adapter here
+  const s = w.document.createElement('script');
+  s.src = new URL('adapter.js', location.href).href;
+  w.document.head.appendChild(s);
+});
+frame.src = LOCAL ? `/deck/${encodeURIComponent(deck)}/` : new URL('../', location.href).pathname;
+document.title = 'Audience';
 </script>
 </body>
 </html>
