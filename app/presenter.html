@@ -87,13 +87,12 @@
   #stripframe { display: block; width: 100%; height: clamp(110px, 17vh, 180px); border: 0; }
 </style>
 </head>
-<body>
+<body class="strip">
 <header>
   <a id="home" href="/" title="All decks">←</a>
   <div id="title">Lectern</div>
   <span id="blackbadge">SCREEN BLANK</span>
   <span id="status"></span><button id="resync">Fix</button>
-  <button id="slides" title="See and reorder slides">Slides</button>
   <button class="primary" id="open">Start presenting</button>
   <span id="clock"></span>
   <span id="timer" class="paused" title="Click to start or pause. Double-click to reset.">0:00</span>
@@ -389,18 +388,11 @@ function goTo(n) {
   const m = { type: 'goto', index: n, steps: 0 };
   toFrame(current, m); bus.postMessage(m);
 }
-function openStrip(on) {
-  document.body.classList.toggle('strip', on);
-  if (on && !strip.src) strip.src = deckUrl; // load only when first opened
-  if (!on) cancelOrder();
-
-}
 function cancelOrder() {
   if (!pendingOrder) return;
   pendingOrder = null; $('strip').classList.remove('changed');
   strip.src = strip.src; // back to the saved order
 }
-$('slides').onclick = () => openStrip(!document.body.classList.contains('strip'));
 $('ordercancel').onclick = cancelOrder;
 $('ordersave').onclick = async () => {
   const order = pendingOrder;
@@ -437,7 +429,7 @@ function addAdapter(frame) {
   });
 }
 addAdapter(current); addAdapter(preview); addAdapter(strip);
-loadNotes().finally(() => { current.src = deckUrl; preview.src = deckUrl; });
+loadNotes().finally(() => { current.src = deckUrl; preview.src = deckUrl; strip.src = deckUrl; });
 showStatus();
 </script>
 </body>
