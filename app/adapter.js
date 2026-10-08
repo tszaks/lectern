@@ -80,6 +80,7 @@
 
   let lastSent = '';
   function report(force) {
+    if (role === 'strip') return;
     const all = slides();
     const index = currentIndex();
     const state = {
@@ -133,6 +134,7 @@
 
   // ---------- events ----------
   addEventListener('keydown', e => {
+    if (role === 'strip') return;
     if (!e.isTrusted) return reportSoon(); // our own replayed key: let the deck act on it
     const t = e.target;
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
@@ -152,7 +154,7 @@
   }, true);
 
   addEventListener('click', e => {
-    if (!e.isTrusted || role === 'preview') return;
+    if (!e.isTrusted || role === 'preview' || role === 'strip') return;
     post({ type: 'click', path: pathTo(e.target) });
     reportSoon();
   }, true);
@@ -165,6 +167,7 @@
     else if (m.type === 'goto') goTo(m.index, m.steps);
     else if (m.type === 'report') report(true);
     else if (m.type === 'media') applyMedia(m);
+    else if (m.type === 'here') stripHere(m.index);
     reportSoon();
   });
   addEventListener('hashchange', reportSoon);
@@ -187,7 +190,7 @@
           const v = f.getAttribute(attr);
           if (v && !/enablejsapi=1/.test(v)) f.setAttribute(attr, v + (v.includes('?') ? '&' : '?') + 'enablejsapi=1');
         }
-        if (role !== 'preview' && !f.dataset.lecternWatched) {
+        if (role !== 'preview' && role !== 'strip' && !f.dataset.lecternWatched) {
           f.dataset.lecternWatched = '1';
           f.addEventListener('load', () => {
             const p = { state: -1, time: 0, quietUntil: 0, heard: false };
@@ -200,7 +203,7 @@
             }, 250);
           });
         }
-        if (role !== 'preview') return;
+        if (role !== 'preview' && role !== 'strip') return;
       }
       if (role !== 'audience' && !f.srcdoc) {
         f.srcdoc = '<body style="margin:0;display:grid;place-items:center;height:100vh;background:#111;color:#999;font:600 28px system-ui">Plays on the audience screen</body>';
@@ -253,7 +256,80 @@
     }
   }
 
+  // ---------- strip: every slide as a small picture, for the slide strip at the bottom ----------
+  // Only the "strip" copy of the deck does this. It moves the slides into a row of thumbnails.
+  // Click a thumbnail to go to that slide. Drag a thumbnail to change the order.
+  function buildStrip() {
+    const all = slides();
+    if (!all.length) return;
+    const active = all[currentIndex()] || all[0];
+    const W = active.offsetWidth || 1600, H = active.offsetHeight || 900, h = 104, k = h / H;
+    const css = document.createElement('style');
+    css.textContent = `
+      html, body { overflow-x: auto !important; overflow-y: hidden !important; height: auto !important; background: #f7f7f8 !important; margin: 0 !important; }
+      body > :not(#lectern-strip) { display: none !important; }
+      #lectern-strip { display: flex; gap: 14px; padding: 12px 16px; align-items: flex-start; width: max-content; }
+      .lectern-thumb { flex: none; width: ${W * k}px; cursor: pointer; user-select: none; -webkit-user-select: none; }
+      .lectern-thumb .pic { position: relative; width: ${W * k}px; height: ${h}px; overflow: hidden; border-radius: 8px;
+        box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.08); outline: 0 solid #f26b1d; outline-offset: 2px; }
+      .lectern-thumb.here .pic { outline-width: 3px; }
+      .lectern-thumb.dragging { opacity: .35; }
+      .lectern-thumb .pic > * { position: absolute !important; inset: auto !important; left: 0 !important; top: 0 !important;
+        width: ${W}px !important; height: ${H}px !important; transform: scale(${k}) !important; transform-origin: 0 0 !important;
+        opacity: 1 !important; visibility: visible !important; pointer-events: none !important; transition: none !important; }
+      .lectern-thumb .pic .in, .lectern-thumb .pic .step, .lectern-thumb .pic .fragment { opacity: 1 !important; transform: none !important; visibility: visible !important; }
+      .lectern-thumb .num { font: 500 12px -apple-system, system-ui, sans-serif; color: #8a8a8f; margin-top: 6px; text-align: center; }
+      .lectern-thumb.here .num { color: #111; font-weight: 600; }`;
+    document.head.appendChild(css);
+    const strip = document.createElement('div');
+    strip.id = 'lectern-strip';
+    all.forEach((slide, i) => {
+      if (getComputedStyle(slide).display === 'none') slide.style.setProperty('display', 'block', 'important');
+      const t = document.createElement('div'); t.className = 'lectern-thumb'; t.dataset.old = i;
+      const pic = document.createElement('div'); pic.className = 'pic';
+      const num = document.createElement('div'); num.className = 'num';
+      pic.append(slide); t.append(pic, num); strip.append(t);
+    });
+    document.body.append(strip);
+    renumber();
+    quiet(strip);
+
+    // Drag with the pointer; a short press without moving is a click (go to that slide).
+    let drag = null;
+    strip.addEventListener('pointerdown', e => {
+      const t = e.target.closest('.lectern-thumb'); if (!t) return;
+      drag = { t, x: e.clientX, moved: false };
+      t.setPointerCapture(e.pointerId);
+    });
+    strip.addEventListener('pointermove', e => {
+      if (!drag) return;
+      if (!drag.moved && Math.abs(e.clientX - drag.x) < 6) return;
+      drag.moved = true; drag.t.classList.add('dragging');
+      // Edge scroll, then move the thumbnail next to the one under the pointer.
+      if (e.clientX < 40) scrollBy(-20, 0); else if (e.clientX > innerWidth - 40) scrollBy(20, 0);
+      const over = [...strip.children].find(c => c !== drag.t && (() => { const r = c.getBoundingClientRect(); return e.clientX > r.left && e.clientX < r.right; })());
+      if (over) { const r = over.getBoundingClientRect(); strip.insertBefore(drag.t, e.clientX > r.left + r.width / 2 ? over.nextSibling : over); renumber(); }
+    });
+    strip.addEventListener('pointerup', () => {
+      if (!drag) return;
+      const { t, moved } = drag; drag = null; t.classList.remove('dragging');
+      if (moved) post({ type: 'strip-order', order: [...strip.children].map(c => Number(c.dataset.old)) });
+      else post({ type: 'strip-jump', index: Number(t.dataset.old) });
+    });
+  }
+  function renumber() {
+    const strip = document.getElementById('lectern-strip');
+    if (strip) [...strip.children].forEach((c, i) => { c.querySelector('.num').textContent = i + 1; });
+  }
+  function stripHere(index) {
+    const strip = document.getElementById('lectern-strip'); if (!strip) return;
+    [...strip.children].forEach(c => c.classList.toggle('here', Number(c.dataset.old) === index));
+    const here = strip.querySelector('.here');
+    if (here) here.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }
+
   function start() {
+    if (role === 'strip') { buildStrip(); post({ type: 'ready' }); return; }
     quiet(document);
     new MutationObserver(muts => {
       for (const m of muts) if (m.type === 'childList') m.addedNodes.forEach(n => n.nodeType === 1 && quiet(n.parentElement || document));

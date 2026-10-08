@@ -5,49 +5,67 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lectern · Presenter</title>
 <style>
-  :root { --bg: #111312; --panel: #1b1e1d; --line: #2a2e2c; --text: #ecebe6; --muted: #8b918e; --accent: #e2a23b; --warn: #d45f48; }
+  /* Black, white and gray, with one orange accent. */
+  :root { --bg: #ffffff; --side: #f7f7f8; --panel: #ffffff; --line: #e7e7e9; --text: #111111; --muted: #8a8a8f;
+    --accent: #f26b1d; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06); }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px/1.4 -apple-system, system-ui, sans-serif; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px/1.4 -apple-system, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
   body { display: grid; grid-template-rows: auto 1fr; height: 100vh; overflow: hidden; }
-  button { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
-  button:hover { border-color: var(--muted); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #1a1a1a; font-weight: 600; }
+  button { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+  button:hover { background: var(--side); }
+  button.primary { background: #111; border-color: #111; color: #fff; font-weight: 600; }
+  button.primary:hover { background: #333; }
+  button:disabled, button:disabled:hover { opacity: .35; cursor: default; background: var(--panel); }
+  button.primary:disabled { background: #111; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
+  header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; }
   #home { color: var(--muted); text-decoration: none; font-size: 18px; }
   #home:hover { color: var(--text); }
   #title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
-  #timer { font: 600 22px ui-monospace, Menlo, monospace; cursor: pointer; min-width: 90px; text-align: right; }
+  #timer { font: 600 22px ui-monospace, SFMono-Regular, Menlo, monospace; cursor: pointer; min-width: 90px; text-align: right; color: var(--accent); }
   #timer.paused { color: var(--muted); }
   #clock { color: var(--muted); font-variant-numeric: tabular-nums; }
   #status { color: var(--muted); font-size: 13px; }
-  #status.warn { color: var(--warn); }
-  #resync { display: none; padding: 2px 8px; font-size: 13px; }
+  #status.warn { color: var(--accent); }
+  #resync { display: none; padding: 2px 10px; font-size: 13px; }
   #resync.on { display: inline-block; }
-  #blackbadge { display: none; background: var(--warn); color: #fff; border-radius: 6px; padding: 3px 8px; font-size: 12px; font-weight: 700; }
+  #blackbadge { display: none; background: #111; color: #fff; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; }
   body.black #blackbadge { display: inline-block; }
 
-  main { display: grid; grid-template-columns: 1.6fr 1fr; gap: 20px; padding: 20px; min-height: 0; }
-  .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
-  .screen { position: relative; aspect-ratio: 16 / 9; width: 100%; background: #000; border-radius: 10px; overflow: hidden; }
+  main { display: grid; grid-template-columns: 1.6fr 1fr; gap: 24px; padding: 8px 20px 20px; min-height: 0; }
+  .label { color: var(--muted); font-size: 12px; font-weight: 500; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+  .screen { position: relative; aspect-ratio: 16 / 9; width: 100%; background: #000; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
   /* Decks always render at 1920x1080 and are scaled to fit, so every view matches the projector. */
   .screen iframe { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; border: 0;
     transform: translate(-50%, -50%) scale(var(--fit, .25)); }
   /* "Next" is a frozen copy of the deck: it looks exactly like the slide, with no animation. */
   #preview { pointer-events: none; }
-  #end { position: absolute; inset: 0; display: none; place-items: center; color: var(--muted); background: #000; }
+  #end { position: absolute; inset: 0; display: none; place-items: center; color: var(--muted); background: var(--side); }
   #end.on { display: grid; }
   .left { display: flex; flex-direction: column; min-height: 0; }
-  #nav { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 14px; }
-  #count { font-variant-numeric: tabular-nums; min-width: 90px; text-align: center; }
-  .right { display: grid; grid-template-rows: auto 1fr; gap: 20px; min-height: 0; }
+  #nav { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 16px; }
+  #count { font-variant-numeric: tabular-nums; min-width: 90px; text-align: center; color: var(--muted); }
+  .right { display: grid; grid-template-rows: auto 1fr; gap: 24px; min-height: 0; }
   .notes { display: flex; flex-direction: column; min-height: 0; }
-  #notes { flex: 1; width: 100%; resize: none; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+  #notes { flex: 1; width: 100%; resize: none; background: var(--side); color: var(--text); border: 1px solid transparent; border-radius: 12px;
     padding: 16px 18px; font: 26px/1.45 -apple-system, system-ui, sans-serif; outline: none; }
-  #notes:focus { border-color: var(--muted); }
-  .size { display: flex; gap: 6px; align-items: center; text-transform: none; letter-spacing: 0; }
-  .size button { padding: 2px 10px; }
-  #saved { font-size: 12px; text-transform: none; letter-spacing: 0; }
+  #notes:focus { background: var(--panel); border-color: var(--line); box-shadow: var(--shadow); }
+  #notes::placeholder { color: #b4b4b8; }
+  .size { display: flex; gap: 6px; align-items: center; }
+  .size button { padding: 2px 10px; font-size: 13px; }
+  #saved { font-size: 12px; }
+
+  /* Slide strip along the bottom, like PowerPoint: click to go to a slide, drag to change the order. */
+  body.strip { grid-template-rows: auto 1fr auto; }
+  #strip { display: none; border-top: 1px solid var(--line); background: var(--side); }
+  body.strip #strip { display: block; }
+  #strip .bar { display: flex; align-items: center; gap: 10px; padding: 8px 16px 0; color: var(--muted); font-size: 13px; }
+  #strip .bar .grow { flex: 1; }
+  #strip .bar button { padding: 3px 12px; font-size: 13px; }
+  #strip .bar .pending { display: none; }
+  #strip.changed .bar .pending { display: inline-block; }
+  #stripframe { display: block; width: 100%; height: 150px; border: 0; }
 </style>
 </head>
 <body>
@@ -56,6 +74,7 @@
   <div id="title">Lectern</div>
   <span id="blackbadge">SCREEN BLANK</span>
   <span id="status"></span><button id="resync">Fix</button>
+  <button id="slides" title="See and reorder slides">Slides</button>
   <button class="primary" id="open">Start presenting</button>
   <span id="clock"></span>
   <span id="timer" class="paused" title="Click to start or pause. Double-click to reset.">0:00</span>
@@ -84,6 +103,11 @@
     </div>
   </section>
 </main>
+<section id="strip" aria-label="Slides">
+  <div class="bar"><span id="striphint">Click a slide to go to it. Drag a slide to change the order.</span><span class="grow"></span>
+    <button class="pending" id="ordercancel">Cancel</button><button class="primary pending" id="ordersave">Save order</button></div>
+  <iframe id="stripframe" data-role="strip" title="All slides"></iframe>
+</section>
 <script>
 // On a website, "/presenter" must end in "/" so the relative links below work.
 if (!/^\/(present|audience)\//.test(location.pathname) && !/(\/|\.html)$/.test(location.pathname)) location.replace(location.pathname + '/' + location.search);
@@ -150,6 +174,7 @@ function onState(s) {
   if (moved) updatePreview();
   showStatus();
   sendOutline();
+  if (moved && strip.src) toFrame(strip, { type: 'here', index });
 }
 
 // Keep notes.md listing every slide with its title, so an agent can see which note goes where.
@@ -236,6 +261,7 @@ function reloadDeck() {
   outlineSent = '';
   previewReady = false;
   current.src = current.src; preview.src = preview.src;
+  if (strip.src) strip.src = strip.src;
   bus.postMessage({ type: 'reload' });
 }
 
@@ -313,6 +339,50 @@ const fitObserver = new ResizeObserver(entries => entries.forEach(e => {
 }));
 document.querySelectorAll('.screen').forEach(el => fitObserver.observe(el));
 
+
+// ---------- slide strip ----------
+const strip = $('stripframe');
+let pendingOrder = null;
+function goTo(n) {
+  const m = { type: 'goto', index: n, steps: 0 };
+  toFrame(current, m); bus.postMessage(m);
+}
+function openStrip(on) {
+  document.body.classList.toggle('strip', on);
+  if (on && !strip.src) strip.src = deckUrl; // load only when first opened
+  if (!on) cancelOrder();
+
+}
+function cancelOrder() {
+  if (!pendingOrder) return;
+  pendingOrder = null; $('strip').classList.remove('changed');
+  strip.src = strip.src; // back to the saved order
+}
+$('slides').onclick = () => openStrip(!document.body.classList.contains('strip'));
+$('ordercancel').onclick = cancelOrder;
+$('ordersave').onclick = async () => {
+  const order = pendingOrder;
+  const r = await fetch(api('order'), { method: 'PUT', body: JSON.stringify({ order }) });
+  if (!r.ok) { alert(await r.text()); return; }
+  pendingOrder = null; $('strip').classList.remove('changed');
+  // Stay on the same slide, at its new place.
+  index = order.indexOf(index); steps = 0;
+  fileNotes = {}; loadNotes();
+  fetch(api('version')).then(r => r.json()).then(v => { version = v; });
+  reloadDeck();
+};
+addEventListener('message', e => {
+  const m = e.data;
+  if (e.source !== strip.contentWindow || !m || !m.lectern) return;
+  if (m.type === 'ready') toFrame(strip, { type: 'here', index });
+  if (m.type === 'strip-jump' && !pendingOrder) goTo(m.index);
+  if (m.type === 'strip-order') {
+    pendingOrder = m.order.every((old, pos) => old === pos) ? null : m.order;
+    $('strip').classList.toggle('changed', !!pendingOrder);
+  }
+});
+if (!LOCAL) $('striphint').textContent = 'Click a slide to go to it.'; // a website cannot save a new order
+
 // ---------- start ----------
 // On a website there is no server to add the adapter to the deck, so add it here (same website, so this is allowed).
 function addAdapter(frame) {
@@ -324,7 +394,7 @@ function addAdapter(frame) {
     w.document.head.appendChild(s);
   });
 }
-addAdapter(current); addAdapter(preview);
+addAdapter(current); addAdapter(preview); addAdapter(strip);
 loadNotes().finally(() => { current.src = deckUrl; preview.src = deckUrl; });
 showStatus();
 </script>
