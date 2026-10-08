@@ -76,7 +76,19 @@
   function hasHiddenSteps(slide) {
     return !!slide.querySelector('.step:not(.shown), .fragment:not(.visible)');
   }
-  const shownSteps = slide => slide ? slide.querySelectorAll('.step.shown, .fragment.visible').length : 0;
+  // Count what a slide has revealed so far. Decks mark revealed parts with "shown" (or reveal.js "visible").
+  const shownSteps = slide => slide ? slide.querySelectorAll('.shown, .fragment.visible').length : 0;
+  const hideSteps = root => root.querySelectorAll('.shown, .fragment.visible').forEach(el => el.classList.remove('shown', 'visible'));
+  // Press a key and report whether the deck changed anything. Lectern does not need to know
+  // the deck's own names for steps: a press that changes nothing means the deck is at its end.
+  const watcher = new MutationObserver(() => {});
+  function pressAndSee(key) {
+    watcher.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+    press(key);
+    const changed = watcher.takeRecords().length > 0;
+    watcher.disconnect();
+    return changed;
+  }
 
   let lastSent = '';
   // Titles and notes are read once, and again only when slides are added or removed.
@@ -115,19 +127,20 @@
     // Going forward: step from where we are (the "Next" view usually moves just one slide).
     // Going back: start again from the first slide, with all steps hidden.
     if (n < currentIndex()) {
-      document.querySelectorAll('.step.shown').forEach(el => el.classList.remove('shown'));
-      document.querySelectorAll('.fragment.visible').forEach(el => el.classList.remove('visible'));
+      slides().forEach(hideSteps);
       press('Home');
     }
-    for (let i = 0; i < 1000 && currentIndex() < n; i++) {
-      const before = currentIndex(), stepsLeft = hasHiddenSteps(slides()[before]);
-      press('ArrowRight');
-      if (currentIndex() === before && !stepsLeft) break; // deck stopped moving
+    for (let i = 0; i < 2000 && currentIndex() < n; i++) {
+      const before = currentIndex();
+      if (!pressAndSee('ArrowRight') && currentIndex() === before) break; // the deck did nothing: it is at its end
     }
-    // The slide we arrived at starts with its steps hidden.
+    // The slide we arrived at starts with nothing revealed, then reveals as many parts as asked.
     const target = slides()[n];
-    if (target) target.querySelectorAll('.step.shown, .fragment.visible').forEach(el => el.classList.remove('shown', 'visible'));
-    for (let i = 0; i < steps && currentIndex() === n && hasHiddenSteps(slides()[n]); i++) press('ArrowRight');
+    if (target) hideSteps(target);
+    for (let i = 0; i < steps && currentIndex() === n; i++) {
+      if (!pressAndSee('ArrowRight')) break;
+      if (currentIndex() !== n) { press('ArrowLeft'); break; } // went one too far
+    }
     reportSoon();
   }
   function pathTo(el) {
