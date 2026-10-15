@@ -39,6 +39,11 @@
     display: none; place-items: center; font-weight: 600; pointer-events: none; z-index: 10; }
   body.over #dropping { display: grid; }
   #busy { color: var(--muted); font-size: 13px; margin-right: 4px; }
+  /* Toasts: small messages at the bottom. Opacity only, so they cost almost nothing to draw. */
+  #toasts { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 1000; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+  .toast { background: rgba(17,17,17,.88); color: #fff; font: 600 14px/1.3 -apple-system, system-ui, sans-serif; padding: 11px 16px; border-radius: 18px; max-width: min(560px, 90vw); text-align: center; pointer-events: auto; opacity: 0; transition: opacity .2s; }
+  .toast.on { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 </style>
 </head>
 <body>
@@ -61,6 +66,20 @@
 <template id="icon-images"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 8"/></svg></template>
 <template id="icon-empty"><svg viewBox="0 0 24 24"><path d="M12 8v8M8 12h8"/></svg></template>
 <script>
+// Toasts: up to 3 at once. A toast stays while the mouse is on it. Screen readers hear it politely.
+const toastBox = document.createElement('div'); toastBox.id = 'toasts'; toastBox.setAttribute('role', 'status'); toastBox.setAttribute('aria-live', 'polite'); document.body.append(toastBox);
+function dismissToast(t) { clearTimeout(t._timer); t.classList.remove('on'); setTimeout(() => t.remove(), 220); }
+function showToast(text, ms = 4000) {
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = text;
+  const arm = wait => { clearTimeout(t._timer); t._timer = setTimeout(() => dismissToast(t), wait); };
+  t.onmouseenter = () => clearTimeout(t._timer);
+  t.onmouseleave = () => arm(1500);
+  toastBox.append(t);
+  while (toastBox.children.length > 3) toastBox.firstChild.remove();
+  requestAnimationFrame(() => t.classList.add('on'));
+  arm(ms);
+  return t;
+}
 const $ = id => document.getElementById(id);
 const enc = encodeURIComponent;
 // In the Mac app, "Open…" uses the Mac's own panel and links the folder or file (nothing is copied).
@@ -101,7 +120,7 @@ $('new').onclick = async () => {
   let name = base, n = 2;
   while (names.includes(name)) name = `${base} ${n++}`;
   const r = await fetch('/api/new/' + enc(name), { method: 'POST' });
-  if (!r.ok) { alert(await r.text()); return; }
+  if (!r.ok) { showToast(await r.text()); return; }
   location.href = '/present/' + enc((await r.json()).name);
 };
 
@@ -123,7 +142,7 @@ async function importAsProject(deck, files) {
   $('busy').textContent = `Importing ${name}…`;
   for (const { file, path } of files) {
     const r = await fetch(`/api/upload/${enc(name)}/${path.split('/').map(enc).join('/')}`, { method: 'PUT', body: file });
-    if (!r.ok) { alert(`Could not import ${path}: ${await r.text()}`); $('busy').textContent = ''; return; }
+    if (!r.ok) { showToast(`Could not import ${path}: ${await r.text()}`); $('busy').textContent = ''; return; }
   }
   location.href = '/present/' + enc(name);
 }
