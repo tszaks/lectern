@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.2.4 — 2026-10-15
 
-- **Hold End to end the show.** One click no longer ends it. Hold the End button (or hold Enter or Space on it) for a moment. Esc still needs two presses.
-- **Small messages instead of pop-ups.** Errors on the home and project pages show as a toast, not a system alert.
+- **Hold End to end the show.** A single click on End used to stop the talk at once. Now you press and hold End for a moment while a ring fills; letting go early cancels and shows "Hold End to end the show". Holding Enter or Space on the End button works the same way. Clicker keys never end a show, and Esc still needs two presses.
+- **Messages appear as small notes, not pop-up boxes.** The four places that used a browser alert (new project, import, saving the slide order) now show a short note in an empty corner. During a show the note never covers the notes, the slides, the timer or End.
 
 ## 0.2.3 — 2026-10-08
 
