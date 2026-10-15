@@ -75,6 +75,36 @@ try {
     await ctx.close();
   }
   {
+    // Toasts must never cover what the presenter reads or uses during a talk.
+    const { ctx, page } = await openShow();
+    await page.evaluate(() => { showToast('Hold End to end the show'); showToast('A longer message so the stack is wide: could not save the order of the slides'); showToast('Third toast in the stack'); });
+    await page.waitForTimeout(350);
+    const hit = async sel => page.evaluate(sel => {
+      const a = document.querySelector(sel).getBoundingClientRect();
+      return [...document.querySelectorAll('.toast')].some(t => { const b = t.getBoundingClientRect(); return b.left < a.right && b.right > a.left && b.top < a.bottom && b.bottom > a.top; });
+    }, sel);
+    for (const sel of ['#notes', '#current', '#preview', '#timer', '#next', '#prev', '#endbtn']) check(`presenter view: toasts do not cover ${sel}`, !(await hit(sel)));
+    if (SHOT) await page.screenshot({ path: path.join(SHOT, 'toast-stack.png') });
+    await ctx.close();
+  }
+  for (const key of ['Enter', ' ']) {
+    // Note: startHold has two guards (the !e.repeat test and `if (holdTimer) return`), so removing only one still passes; removing both fails here.
+    // Auto-repeat: the OS sends keydown again and again while a key is held. Playwright marks the repeats repeat=true.
+    const { ctx, page } = await openShow();
+    await page.evaluate(() => { window.__ends = 0; const real = endPresenting; window.endPresenting = () => { window.__ends++; return real(); }; });
+    await page.focus('#endbtn');
+    const t0 = Date.now();
+    await page.keyboard.down(key);
+    let repeats = 0;
+    while (Date.now() - t0 < 600) { await page.waitForTimeout(100); await page.keyboard.down(key); repeats++; }
+    check(`auto-repeat ${JSON.stringify(key)}: ${repeats} repeats do not end the show early (at 600 ms)`, await presenting(page) && await page.evaluate(() => window.__ends) === 0);
+    while (Date.now() - t0 < 1100) { await page.waitForTimeout(100); await page.keyboard.down(key); }
+    await page.waitForTimeout(300);
+    check(`auto-repeat ${JSON.stringify(key)}: the show ends once after the hold`, !(await presenting(page)) && await page.evaluate(() => window.__ends) === 1);
+    await page.keyboard.up(key);
+    await ctx.close();
+  }
+  {
     // Esc keeps its two-press rule.
     const { ctx, page } = await openShow();
     await page.keyboard.press('Escape');
@@ -140,7 +170,7 @@ try {
     check('toast stack is capped at 3', await page.locator('.toast').count() === 3);
     check('toast container is aria-live polite', await page.locator('#toasts').getAttribute('aria-live') === 'polite');
     await page.waitForTimeout(350);
-    if (SHOT) await page.screenshot({ path: path.join(SHOT, 'toast-stack.png') });
+    check('project view: toasts do not cover the notes', await page.evaluate(() => { const a = $('notes').getBoundingClientRect(); return ![...document.querySelectorAll('.toast')].some(t => { const b = t.getBoundingClientRect(); return b.left < a.right && b.right > a.left && b.top < a.bottom && b.bottom > a.top; }); }));
     await page.locator('.toast').last().hover();
     await page.waitForTimeout(1200);
     check('toast stays while the mouse is on it', await page.locator('.toast', { hasText: 't4' }).count() === 1);
