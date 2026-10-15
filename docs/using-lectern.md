@@ -56,7 +56,7 @@ The presenter view shows **Now** (the current slide), **Next** (a picture of the
 | ● Audience in sync | The audience sees the same slide and step as you. |
 | ● Audience on slide N (orange) | They differ. Click **Fix** to bring them back in line. |
 
-Click **End** or press **Esc** to stop. The slides window closes and you return to the project.
+Hold **End** for a moment, or press **Esc** twice, to stop. The slides window closes and you return to the project.
 
 ### Full screen
 

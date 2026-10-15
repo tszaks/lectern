@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Hold End to end the show.** One click no longer ends it. Hold the End button (or hold Enter or Space on it) for a moment. Esc still needs two presses.
+- **Small messages instead of pop-ups.** Errors on the home and project pages show as a toast, not a system alert.
+
 ## 0.2.3 — 2026-10-08
 
 - **Lectern updates itself.** When it opens, Lectern looks for a newer version. If there is one, it asks "Update now?", downloads it, checks that it is signed by the same developer, and opens again. Also **Lectern → Check for Updates…**. It never asks during a show.

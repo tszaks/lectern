@@ -67,7 +67,7 @@ Click **▶ Present** and choose:
 - **Presenter view:** slides full screen on the TV or projector; on your Mac, the current slide, the next slide, your notes, and a timer that starts at 0:00.
 - **Full screen:** the slides fill this screen.
 
-Press **Esc** (or **End**) to go back to the project.
+Press **Esc** twice (or hold **End**) to go back to the project.
 
 <img src="docs/images/present-menu.png" alt="The Present menu with the choices Presenter view and Full screen" width="100%">
 
