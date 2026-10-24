@@ -11,7 +11,7 @@ By taking part you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 - Small fixes (typos, clear bugs) can go straight to a pull request.
 - Security problems go through [SECURITY.md](SECURITY.md), not a public issue.
 
-## Setup
+## Setup and run
 
 You need Node 18+ for the server and the MCP server, and the Xcode command line tools for the Mac app. There is no package install for the main app.
 

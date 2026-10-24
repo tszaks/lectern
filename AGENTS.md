@@ -8,16 +8,16 @@ A Mac app (Swift, AppKit, WebKit) and a Node.js server that both serve the same 
 
 ## Layout
 
-- `app/` — the web pages, shared by both servers. Plain HTML, CSS and JavaScript; no build step, no dependencies.
+- `app/`: the web pages, shared by both servers. Plain HTML, CSS and JavaScript; no build step, no dependencies.
   - `adapter.js` is injected into every copy of a deck. It must work with any deck that follows the deck format.
   - `presenter.html` has two modes: the project view (default) and presenting (`body.presenting`).
-- `bin/lectern.js` — the Node.js server. **No dependencies.** Keep it that way.
-- `mac/Sources/Server.swift` — the same HTTP routes in Swift. **Any route added or changed in `bin/lectern.js` must be ported here too.**
-- `mac/` — `build.sh` (local build), `release.sh` (Developer ID signing and notarization; private details come from `~/.lectern-release.env`, never from the repo).
-- `mcp/` — the MCP server (Node.js; `@modelcontextprotocol/sdk`, `playwright-core`).
-- `test/` — `hold-to-end.test.mjs`, a Playwright browser test (Playwright is not a dependency; see the file header).
-- `.github/workflows/ci.yml` — runs `node --check` on the Node files.
-- `examples/` — example decks. `docs/` — documentation and README images.
+- `bin/lectern.js`: the Node.js server. **No dependencies.** Keep it that way.
+- `mac/Sources/Server.swift`: the same HTTP routes in Swift. **Any route added or changed in `bin/lectern.js` must be ported here too.**
+- `mac/`: `build.sh` (local build), `release.sh` (Developer ID signing and notarization; private details come from `~/.lectern-release.env`, never from the repo).
+- `mcp/`: the MCP server (Node.js; `@modelcontextprotocol/sdk`, `playwright-core`).
+- `test/`: `hold-to-end.test.mjs`, a Playwright browser test (Playwright is not a dependency; see the file header).
+- `.github/workflows/ci.yml`: runs `node --check` on the Node files.
+- `examples/`: example decks. `docs/`: documentation and README images.
 
 ## Commands
 
