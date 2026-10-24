@@ -1,15 +1,21 @@
 # Changelog
 
-## 0.2.4 — 2026-10-15
+All notable changes to Lectern are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [Unreleased]
+
+# Changelog
+
+## [0.2.4] - 2026-10-15
 
 - **Hold End to end the show.** A single click on End used to stop the talk at once. Now you press and hold End for a moment while a ring fills; letting go early cancels and shows "Hold End to end the show". Holding Enter or Space on the End button works the same way. Clicker keys never end a show, and Esc still needs two presses.
 - **Messages appear as small notes, not pop-up boxes.** The four places that used a browser alert (new project, import, saving the slide order) now show a short note in an empty corner. During a show the note never covers the notes, the slides, the timer or End.
 
-## 0.2.3 — 2026-10-08
+## [0.2.3] - 2026-10-08
 
 - **Lectern updates itself.** When it opens, Lectern looks for a newer version. If there is one, it asks "Update now?", downloads it, checks that it is signed by the same developer, and opens again. Also **Lectern → Check for Updates…**. It never asks during a show.
 
-## 0.2.2 — 2026-10-08
+## [0.2.2] - 2026-10-08
 
 - **Clicker keeps working after you click a video.** Clicking a YouTube player used to take the keyboard, so the clicker stopped moving slides. Lectern now takes the keyboard back at once.
 - **A video stops when you move to the next slide**, so its sound does not go on under the next slides (as in Keynote).
@@ -19,22 +25,22 @@
 - A link on a slide opens once (it used to open twice: once for each copy of the slide).
 - New Mac self-test for videos (`LECTERN_SELFTEST_MODE=video`).
 
-## 0.2.1 — 2026-10-08
+## [0.2.1] - 2026-10-08
 
 - Keeps the Mac and its display awake while presenting (the screen no longer goes dark during a long video or discussion).
 - No question pops up when a show starts. Set up Do Not Disturb any time from **Lectern → Set Up Do Not Disturb…**.
 
-## 0.2.0 — 2026-10-08
+## [0.2.0] - 2026-10-08
 
 - **Send a project as one file.** Export a project as a `.lectern` file (slides, images, fonts and notes); double-click it on another Mac to open it in Lectern.
 - **Export** button in the project, **File → Export Project…** (⌘E). **Open…** accepts `.lectern` files too.
 
-## 0.1.1 — 2026-10-08
+## [0.1.1] - 2026-10-08
 
 - The presenter view notices when the slides window closes (the status goes back to "Audience not open").
 - Documentation, example deck, and files for AI tools (`llms.txt`, `AGENTS.md`).
 
-## 0.1.0 — 2026-10-08
+## [0.1.0] - 2026-10-08
 
 First release.
 
@@ -47,3 +53,12 @@ First release.
 - Speaker notes in the HTML or in `notes.md`, shown live as they change.
 - Optional Do Not Disturb while presenting.
 - Node.js server (no dependencies), `lectern export` for websites, and an MCP server for AI agents.
+
+[Unreleased]: https://github.com/tszaks/lectern/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/tszaks/lectern/compare/v0.2.3...v0.2.4
+[0.2.3]: https://github.com/tszaks/lectern/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/tszaks/lectern/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/tszaks/lectern/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/tszaks/lectern/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/tszaks/lectern/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/tszaks/lectern/releases/tag/v0.1.0

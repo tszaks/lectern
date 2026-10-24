@@ -1,0 +1,57 @@
+name: Bug report
+description: Something in Lectern does not work as it should
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a deck ...
+        2. Click Present ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: lectern-version
+    attributes:
+      label: Lectern version
+      description: Lectern > About Lectern
+      placeholder: "0.2.4"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "26.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: screens
+    attributes:
+      label: Screens
+      options:
+        - One screen
+        - Two screens (TV, projector or monitor)
+  - type: dropdown
+    id: deck
+    attributes:
+      label: How was the deck made?
+      options:
+        - By hand
+        - With an AI agent
+        - With reveal.js
+        - Slide images
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots help. Do not attach a deck that has private content.

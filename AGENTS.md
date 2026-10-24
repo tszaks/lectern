@@ -15,6 +15,8 @@ A Mac app (Swift, AppKit, WebKit) and a Node.js server that both serve the same 
 - `mac/Sources/Server.swift` — the same HTTP routes in Swift. **Any route added or changed in `bin/lectern.js` must be ported here too.**
 - `mac/` — `build.sh` (local build), `release.sh` (Developer ID signing and notarization; private details come from `~/.lectern-release.env`, never from the repo).
 - `mcp/` — the MCP server (Node.js; `@modelcontextprotocol/sdk`, `playwright-core`).
+- `test/` — `hold-to-end.test.mjs`, a Playwright browser test (Playwright is not a dependency; see the file header).
+- `.github/workflows/ci.yml` — runs `node --check` on the Node files.
 - `examples/` — example decks. `docs/` — documentation and README images.
 
 ## Commands
@@ -36,3 +38,5 @@ LECTERN_HOME=/tmp/lib LECTERN_SELFTEST=<project> LECTERN_SELFTEST_OUT=/tmp/out \
 - **Never put secrets in the repo.** Signing and notary details live in `~/.lectern-release.env`.
 - Comments and UI text are short and plain.
 - The design: white, light gray and black, one orange accent (`#f26b1d`), SF Pro (the timer uses SF Pro Rounded, heavy).
+- **Lectern's one network request is the update check** (`mac/Sources/Updater.swift`, GitHub releases only). Do not add analytics, crash reporting or any other call. If you change the updater, update the FAQ in `README.md` and `SECURITY.md`.
+- Update `README.md`, `docs/` and `CHANGELOG.md` when behavior changes.

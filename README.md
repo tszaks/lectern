@@ -8,6 +8,7 @@ You (or an AI agent) make the deck. Lectern presents it.
 
 [![Download for Mac](https://img.shields.io/badge/Download-for%20Mac-111111?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/tszaks/lectern/releases/latest/download/Lectern.zip)
 
+[![CI](https://github.com/tszaks/lectern/actions/workflows/ci.yml/badge.svg)](https://github.com/tszaks/lectern/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/tszaks/lectern?color=f26b1d&label=release)](https://github.com/tszaks/lectern/releases/latest)
 [![macOS 12+](https://img.shields.io/badge/macOS-12%2B-111111?logo=apple)](#install)
 [![Notarized by Apple](https://img.shields.io/badge/notarized-by%20Apple-111111)](#install)
@@ -17,11 +18,11 @@ You (or an AI agent) make the deck. Lectern presents it.
 
 </div>
 
-## Why Lectern
-
 HTML is a great way to build slides, especially with AI agents. But a browser tab is a poor way to *present* them: no presenter view, no notes, no next-slide preview, and the slides do not go to the projector by themselves. Keynote and PowerPoint cannot open HTML decks at all.
 
-Lectern is the missing piece. It opens any HTML deck (or a folder of slide images) and gives you what a real presentation app gives you.
+Lectern is the missing piece. It opens any HTML deck (or a folder of slide images) and gives you what a real presentation app gives you. It is for anyone who presents from HTML, and for people whose decks are written by an AI agent.
+
+## Features
 
 - **Presenter view.** The current slide, a picture of the next slide, big speaker notes, and a timer, on your Mac, while the audience sees only the slides.
 - **Two screens, no dragging windows.** Lectern finds the TV or projector and puts the slides there full screen. Plug it in late and the slides move there on their own.
@@ -131,6 +132,7 @@ Any HTML deck you move through with the keyboard works, including decks written 
 | [Troubleshooting](docs/troubleshooting.md) | Common problems and fixes |
 | [Architecture](docs/architecture.md) | How Lectern works inside |
 | [Contributing](CONTRIBUTING.md) | Building, testing, releasing |
+| [Changelog](CHANGELOG.md) | What changed in each release |
 
 ## Build from source
 
@@ -140,6 +142,37 @@ bash mac/build.sh          # builds dist/Lectern.app for this Mac (needs Xcode c
 node bin/lectern.js        # or run it in a browser (Node 18+, no dependencies)
 ```
 
+## FAQ
+
+**Does Lectern phone home?**
+Only to check for updates. Nothing else leaves your Mac: no analytics, no crash reporting, no accounts. The slide and presenter pages are served by a small web server inside the app that listens only on `127.0.0.1` (this computer).
+
+The update check works like this, from [`mac/Sources/Updater.swift`](mac/Sources/Updater.swift):
+
+- About four seconds after the Mac app opens, and when you choose **Lectern > Check for Updates...**, it asks `api.github.com` for the latest release of `tszaks/lectern`. It sends nothing about you beyond what any web request carries, such as your IP address.
+- It never checks during a show.
+- If a newer version exists, Lectern asks "Update now?". Nothing downloads until you say yes.
+- On yes, it downloads `Lectern.zip` from the GitHub release, checks that the app inside is signed by the same developer as the running one, replaces itself, and opens again. A download that fails the signature check is not installed.
+- There is no setting to turn the launch check off. If you do not want it, block the app's network access with a firewall. The Node.js version (`node bin/lectern.js`) has no update check.
+
+Decks are separate. A deck is a web page, and if it loads a font, an image or a video from the internet, Lectern loads it like a browser would.
+
+**Which Macs does it run on?**
+Apple-silicon and Intel Macs with macOS 12 Monterey or newer.
+
+**Does Lectern change my slides?**
+No. It drives each deck with key presses. The only change it makes is the slide order, when you click **Save order**, and it keeps a backup.
+
+**Where do my projects and notes live?**
+In `~/Lectern` by default, or the folder named by `LECTERN_HOME`. Notes are a plain `notes.md` file in each project.
+
+**Something does not work.**
+See [Troubleshooting](docs/troubleshooting.md).
+
+## Contributing
+
+Bug reports and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first. Security problems go through [SECURITY.md](SECURITY.md). Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
-[MIT](LICENSE). Made by [Tyler Szakacs](https://github.com/tszaks).
+[MIT](LICENSE) © 2026 Tyler Szakacs.
